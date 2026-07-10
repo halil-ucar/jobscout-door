@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<!-- door/index.html v3 — generic GUI for the job-scout "Google door".
+     Hosted on GitHub Pages (public repo): contains ZERO personal data; exec
+     URL + token are entered once per device and live in localStorage only.
+     Talks to door.gs COOKIELESSLY (cross-origin fetch sends no cookies), which
+     bypasses Google's multi-account routing bug (measured 2026-07-08).
+     v2 (user GO 2026-07-09): #acts= deep link — the dashboard ships marks
+     (Verwerfen/Geprüft/Beworben/Log-Status) here per tap; this page persists
+     them in a local outbox, POSTs action='mark' to door.gs (-> Drive actions
+     file, next scout run books them) and closes itself.
+     v3 (user GO 2026-07-09): #dc= deep link — manual Opus deep-check: the
+     dashboard opens this page for a bot-walled posting, the user pastes the
+     full ad text, it ships as a 'deepcheck' action (adText) and the next
+     scout run runs the full Opus verify on the supplied text. -->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>🚪 Bewerbungs-Tür</title>
+<style>
+  :root { --bg:#101216; --card:#1a1e25; --line:#2a303b; --ink:#e8eaee;
+          --dim:#9aa3b2; --acc:#4da3ff; --ok:#3ecf8e; --warn:#f5b942;
+          --err:#ff6b6b; --mono:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.45 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;
+         padding:14px 12px calc(24px + env(safe-area-inset-bottom)); }
+  h1 { font-size:19px; margin:4px 2px 12px; }
+  h1 small { color:var(--dim); font-weight:400; font-size:12px; }
+  .card { background:var(--card); border:1px solid var(--line);
+          border-radius:14px; padding:12px; margin:0 0 10px; }
+  .row { display:flex; gap:10px; align-items:center; min-width:0; }
+  .grow { flex:1; min-width:0; }
+  .sub { color:var(--dim); font-size:12.5px; }
+  .fit { min-width:38px; text-align:center; font:700 15px var(--mono);
+         padding:6px 4px; border-radius:9px; background:#233043; }
+  .fit.hi { background:#1d3b2d; color:var(--ok); }
+  .fit.mid { background:#3b331d; color:var(--warn); }
+  .chip { display:inline-block; font-size:11.5px; padding:3px 9px;
+          border-radius:999px; border:1px solid var(--line); color:var(--dim); }
+  .chip.live { color:var(--ok); border-color:#2b5c46; }
+  .chip.busy { color:var(--warn); border-color:#5c4d2b; }
+  .chip.done { color:var(--acc); border-color:#2b455c; }
+  button, .btn { appearance:none; border:1px solid var(--line); cursor:pointer;
+          background:#232936; color:var(--ink); border-radius:11px;
+          padding:11px 14px; font-size:14.5px; font-weight:600;
+          text-decoration:none; display:inline-block; text-align:center; }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#08121f; }
+  button.warn { background:transparent; border-color:#6e5a26; color:var(--warn); }
+  button:disabled { opacity:.45; cursor:default; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  input, textarea { width:100%; background:#12151b; border:1px solid var(--line);
+          border-radius:10px; color:var(--ink); padding:10px 12px;
+          font-size:15px; margin:6px 0 0; }
+  textarea { min-height:74px; resize:vertical; }
+  .opt { display:flex; gap:8px; align-items:flex-start; width:100%;
+         text-align:left; margin:6px 0 0; padding:10px 12px; font-weight:400;
+         border-radius:11px; }
+  .opt b { font:700 13px var(--mono); color:var(--acc); min-width:26px; }
+  .opt.sel { border-color:var(--acc); background:#1c2c40; }
+  .opt .star { color:var(--warn); font-size:12px; }
+  .part { margin:14px 0 4px; }
+  .part h3 { font-size:14px; margin:0; }
+  .part .why { color:var(--dim); font-size:12px; margin:2px 0 0; }
+  .tabs { display:flex; gap:8px; margin:0 0 12px; }
+  .tabs button { flex:1; padding:10px; }
+  .tabs button.on { background:var(--acc); border-color:var(--acc); color:#08121f; }
+  .note { font-size:12.5px; color:var(--dim); margin-top:8px; }
+  .flash { font-size:13px; margin-top:8px; min-height:18px; }
+  .flash.ok { color:var(--ok); } .flash.err { color:var(--err); }
+  .letter p { margin:0 0 10px; font-size:14px; }
+  details summary { cursor:pointer; color:var(--acc); font-size:13.5px; margin:8px 0 4px; }
+  .back { background:none; border:none; color:var(--acc); font-size:14px;
+          padding:4px 2px; margin-bottom:6px; }
+  .empty { color:var(--dim); text-align:center; padding:22px 8px; }
+  a.ext { color:var(--acc); text-decoration:none; font-size:13px; }
+</style>
+</head>
+<body>
+<h1>🚪 Bewerbungs-Tür <small id="ver">v3</small></h1>
+<div id="app"><div class="empty">Lade …</div></div>
+<script>
+'use strict';
+/* ------------------------------ config/API ------------------------------ */
+var LS = { url:'door.url', token:'door.token' };
+var S = { state:null, view:'queue', jobId:null, sel:{}, sending:{}, pollT:null };
+
+function cfg(){ return { url:(localStorage.getItem(LS.url)||'').trim(),
+                         token:(localStorage.getItem(LS.token)||'').trim() }; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+function api(action, data){
+  var c = cfg();
+  if (!c.url || !c.token) return Promise.reject(new Error('unconfigured'));
+  if (action === 'state'){
+    return fetch(c.url + '?token=' + encodeURIComponent(c.token) + '&action=state',
+                 { redirect:'follow' }).then(chk);
+  }
+  var body = JSON.stringify(Object.assign({ token:c.token, action:action }, data||{}));
+  return fetch(c.url, { method:'POST', body:body, redirect:'follow' }).then(chk);
+}
+function chk(r){
+  return r.text().then(function(t){
+    var j; try { j = JSON.parse(t); } catch(e){ throw new Error('Antwort unlesbar'); }
+    if (!j.ok) throw new Error(j.error==='auth' ? 'auth' : (j.error||'Fehler'));
+    return j;
+  });
+}
+
+/* -------------------------------- polling ------------------------------- */
+function refresh(){
+  return api('state').then(function(j){ S.state = j; render(); })
+    .catch(function(e){
+      if (String(e.message)==='auth' || String(e.message)==='unconfigured'){ S.view='setup'; render(); }
+    });
+}
+function startPoll(){
+  if (S.pollT) clearInterval(S.pollT);
+  S.pollT = setInterval(function(){
+    if (document.visibilityState === 'visible' && S.view !== 'setup') refresh();
+  }, 20000);
+}
+
+/* ------------------------------- rendering ------------------------------ */
+function el(html){ document.getElementById('app').innerHTML = html; }
+function fitCls(f){ return f>=75 ? 'fit hi' : f>=60 ? 'fit mid' : 'fit'; }
+function phaseChip(p){
+  var m = { requested:['⏳ Lauf läuft …','busy'], revising:['⏳ Überarbeitung läuft …','busy'],
+            'pdf-requested':['📄 PDF wird gebaut …','busy'], round:['📬 Runde bereit','live'],
+            final:['📄 PDF fertig','done'], sent:['✅ versandt','done'] }[p];
+  return m ? '<span class="chip '+m[1]+'">'+m[0]+'</span>' : '';
+}
+function jobs(){ return (S.state && S.state.jobs) || {}; }
+function queue(){ return (S.state && S.state.queue) || []; }
+function flash(id, cls, msg){
+  var n = document.getElementById(id);
+  if (n){ n.className = 'flash ' + cls; n.textContent = msg; }
+}
+
+function render(){
+  var c = cfg();
+  if (S.view === 'setup' || !c.url || !c.token) return renderSetup();
+  if (S.view === 'dc') return dcView();
+  if (S.view === 'job') return renderJob();
+  return renderMain();
+}
+
+function renderSetup(){
+  el('<div class="card"><b>Einmal pro Gerät verbinden</b>'+
+    '<div class="sub" style="margin-top:4px">Beides steht in deiner Einrichtung (SETUP-DOOR.md): die Web-App-URL des Apps Scripts und dein geheimer TOKEN. Bleibt nur auf diesem Gerät gespeichert.</div>'+
+    '<input id="su" placeholder="https://script.google.com/macros/s/…/exec" value="'+esc(cfg().url)+'">'+
+    '<input id="st" placeholder="TOKEN" value="'+esc(cfg().token)+'">'+
+    '<div class="actions"><button class="primary" onclick="setupSave()">Verbindung testen &amp; speichern</button></div>'+
+    '<div id="suf" class="flash"></div></div>');
+}
+function setupSave(){
+  var u = document.getElementById('su').value.trim();
+  var t = document.getElementById('st').value.trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(u))
+    return flash('suf','err','Das ist keine Apps-Script-Web-App-URL (…/exec).');
+  if (t.length < 8) return flash('suf','err','TOKEN fehlt oder ist zu kurz.');
+  localStorage.setItem(LS.url, u); localStorage.setItem(LS.token, t);
+  flash('suf','ok','Teste …');
+  S.view = S.dc ? 'dc' : 'queue';
+  refresh().then(function(){ startPoll(); })
+    .catch(function(){ flash('suf','err','Verbindung fehlgeschlagen — URL/TOKEN prüfen.'); S.view='setup'; });
+}
+
+function renderMain(){
+  var h = '<div class="tabs">'+
+    '<button class="'+(S.view==='queue'?'on':'')+'" onclick="S.view=\'queue\';render()">Warteschlange</button>'+
+    '<button class="'+(S.view==='mail'?'on':'')+'" onclick="S.view=\'mail\';render()">Briefkasten</button></div>';
+  h += S.view==='mail' ? mailboxHTML() : queueHTML();
+  h += '<div class="note" style="text-align:center">🔄 aktualisiert sich alle 20 s · <a class="ext" href="#" onclick="S.view=\'setup\';render();return false">Verbindung ändern</a></div>';
+  el(h);
+}
+
+function queueHTML(){
+  var q = queue(), J = jobs(), h = '';
+  if (!q.length) h += '<div class="empty">Warteschlange leer (oder Daten noch nicht geladen).</div>';
+  q.forEach(function(it, i){
+    var j = J[it.id];
+    h += '<div class="card row" onclick="openJob('+i+')" style="cursor:pointer">'+
+      '<div class="'+fitCls(it.fitScore||0)+'">'+(it.fitScore!=null?it.fitScore:'–')+'</div>'+
+      '<div class="grow"><b>'+esc(it.title)+'</b><div class="sub">'+esc(it.company)+
+      (it.location?' · '+esc(it.location):'')+'</div></div>'+
+      (j ? phaseChip(j.phase) : '<span class="chip">neu</span>')+'</div>';
+  });
+  return h;
+}
+function openJob(i){ S.jobId = queue()[i].id; S.sel = {}; S.view = 'job'; render(); }
+function openJobKey(k){ S.jobId = k; S.sel = {}; S.view = 'job'; render(); }
+
+function mailboxHTML(){
+  var J = jobs();
+  var keys = Object.keys(J).sort(function(a,b){
+    return String(J[b].updated||'').localeCompare(String(J[a].updated||'')); });
+  if (!keys.length) return '<div class="empty">Noch keine Vorgänge — in der Warteschlange „📨 Paket anfordern" tippen.</div>';
+  var h = '';
+  keys.forEach(function(k){
+    var j = J[k];
+    h += '<div class="card row" onclick="openJobKey(\''+esc(k).replace(/'/g,"\\'")+'\')" style="cursor:pointer">'+
+      '<div class="grow"><b>'+esc(j.title||k)+'</b><div class="sub">'+esc(j.company||'')+
+      ' · '+esc(j.updated||'')+'</div></div>'+phaseChip(j.phase)+'</div>';
+  });
+  return h;
+}
+
+function findQueueItem(id){
+  var q = queue();
+  for (var i=0;i<q.length;i++) if (q[i].id===id) return q[i];
+  return null;
+}
+
+function renderJob(){
+  var id = S.jobId, j = jobs()[id], it = findQueueItem(id);
+  var company = (j&&j.company) || (it&&it.company) || '';
+  var title = (j&&j.title) || (it&&it.title) || '';
+  var url = (j&&j.url) || (it&&it.url) || id;
+  var h = '<button class="back" onclick="S.view=\'queue\';render()">← zurück</button>';
+  h += '<div class="card"><div class="row">'+
+    (it && it.fitScore!=null ? '<div class="'+fitCls(it.fitScore)+'">'+it.fitScore+'</div>' : '')+
+    '<div class="grow"><b>'+esc(title)+'</b><div class="sub">'+esc(company)+'</div></div>'+
+    (j?phaseChip(j.phase):'')+'</div>'+
+    '<div style="margin-top:6px"><a class="ext" target="_blank" rel="noopener" href="'+esc(url)+'">Stellenanzeige öffnen ↗</a></div></div>';
+
+  if (!j){
+    h += '<div class="card"><b>Noch kein Vorgang.</b>'+
+      '<div class="sub" style="margin-top:4px">„Paket anfordern" startet den kompletten Anschreiben-Lauf (Regeln aus Drive, Lint-Gates). Die Optionsrunde erscheint hier in ~4–5 Min.</div>'+
+      '<div class="actions"><button class="primary" '+(S.sending.req?'disabled':'')+' onclick="reqPackage()">📨 Paket anfordern</button></div>'+
+      '<div id="jf" class="flash"></div></div>';
+    return el(h);
+  }
+
+  if (j.phase==='requested' || j.phase==='revising' || j.phase==='pdf-requested'){
+    h += '<div class="card"><span class="chip busy">'+
+      (j.phase==='pdf-requested'?'📄 Finales PDF wird gebaut (~1–1,5 Min.) …':'⏳ Der Lauf arbeitet — Ergebnis erscheint hier automatisch.')+
+      '</span></div>';
+  }
+
+  if (j.assumptions && j.assumptions.length){
+    h += '<div class="card"><b>Annahmen</b><ul style="margin:6px 0 0;padding-left:18px">'+
+      j.assumptions.map(function(a){ return '<li class="sub">'+esc(a)+'</li>'; }).join('')+'</ul></div>';
+  }
+
+  if (j.round && j.round.parts && j.round.parts.length){
+    h += '<div class="card"><b>Optionsrunde</b> <span class="sub">(★ = Empfehlung, vorbelegt — antippen zum Ändern)</span>';
+    j.round.parts.forEach(function(pt){
+      var pn = String(pt.num);
+      if (!(pn in S.sel)) S.sel[pn] = pt.selected || pt.recommendation || '';
+      h += '<div class="part"><h3>'+esc(pn)+'. '+esc(pt.name||'')+'</h3>'+
+        (pt.why?'<div class="why">'+esc(pt.why)+'</div>':'');
+      (pt.options||[]).forEach(function(o){
+        var on = S.sel[pn]===o.code;
+        h += '<button class="opt'+(on?' sel':'')+'" onclick="pick(\''+esc(pn)+'\',\''+esc(o.code)+'\')">'+
+          '<b>'+esc(o.code)+'</b><span>'+esc(o.text)+
+          (o.code===pt.recommendation?' <span class="star">★</span>':'')+'</span></button>';
+      });
+      h += '</div>';
+    });
+    h += '<div class="actions"><button class="primary" '+(S.sending.cm?'disabled':'')+' onclick="sendCodes()">Auswahl senden (~3 Min.)</button></div>';
+    h += '</div>';
+  }
+
+  if (j.letterText){
+    h += '<div class="card"><details open><summary>Aktueller Brief</summary><div class="letter">'+
+      String(j.letterText).split(/\n{2,}/).map(function(p){ return '<p>'+esc(p)+'</p>'; }).join('')+
+      '</div></details>'+(j.codes&&j.codes.length?'<div class="sub" style="font-family:var(--mono)">Codes: '+esc(j.codes.join(' '))+'</div>':'')+'</div>';
+  }
+
+  h += '<div class="card"><b>Feinschliff</b>'+
+    '<textarea id="ft" placeholder="Freitext-Wunsch (z. B. „Absatz 4 kürzer, Teil 3 Familie überführen“) — startet eine Text-Runde"></textarea>'+
+    '<div class="actions"><button '+(S.sending.cm?'disabled':'')+' onclick="sendText()">✍ Senden</button></div></div>';
+
+  var pdfUrl = j.pdfUrl || (S.state && S.state.settings && S.state.settings.pdfFileUrl) || '';
+  h += '<div class="card"><div class="actions">'+
+    '<button '+(S.sending.cm||j.phase==='sent'?'disabled':'')+' onclick="sendCmd(\'pdf\')">📄 PDF final bauen</button>'+
+    (j.phase==='final'&&pdfUrl?'<a class="btn" target="_blank" rel="noopener" href="'+esc(pdfUrl)+'">📂 PDF in Drive öffnen</a>':'')+
+    '<button class="warn" '+(S.sending.cm||j.phase==='sent'?'disabled':'')+' onclick="sendCmd(\'versandt\')">✅ Versandt</button>'+
+    '</div><div class="note">„Versandt" bucht die Bewerbung (Scout + Bewerbungslog) und schließt den Vorgang.</div>'+
+    '<div id="jf" class="flash"></div></div>';
+
+  el(h);
+}
+
+function pick(part, code){ S.sel[part] = code; render(); }
+
+/* -------------------------------- actions ------------------------------- */
+function reqPackage(){
+  var id = S.jobId, it = findQueueItem(id) || {};
+  S.sending.req = true; render(); flash('jf','ok','wird gesendet …');
+  api('request', { id:id, company:it.company||'', title:it.title||'', url:it.url||id })
+    .then(function(){ S.sending.req = false; return refresh(); })
+    .catch(function(e){ S.sending.req = false; render(); flash('jf','err','Fehler: '+e.message); });
+}
+function sendComment(text, okMsg){
+  S.sending.cm = true; render(); flash('jf','ok','wird gesendet …');
+  api('comment', { id:S.jobId, text:text })
+    .then(function(){ S.sending.cm = false; return refresh(); })
+    .then(function(){ flash('jf','ok',okMsg); })
+    .catch(function(e){ S.sending.cm = false; render(); flash('jf','err','Fehler: '+e.message); });
+}
+function sendCodes(){
+  var j = jobs()[S.jobId] || {}, codes = [];
+  ((j.round&&j.round.parts)||[]).forEach(function(pt){
+    var c = S.sel[String(pt.num)];
+    if (c) codes.push(c);
+  });
+  if (!codes.length) return flash('jf','err','Keine Option gewählt.');
+  sendComment(codes.join(' '), 'Runde gestartet — Ergebnis erscheint hier (~3 Min.).');
+}
+function sendText(){
+  var t = (document.getElementById('ft')||{}).value || '';
+  if (!t.trim()) return flash('jf','err','Kein Text eingegeben.');
+  sendComment(t.trim(), 'Runde gestartet — Ergebnis erscheint hier (~3 Min.).');
+}
+function sendCmd(word){
+  var q = word==='pdf' ? 'Finales PDF jetzt deterministisch bauen?' :
+    'Bewerbung als VERSANDT verbuchen? (Scout-Markierung + Bewerbungslog, Vorgang wird geschlossen)';
+  if (!confirm(q)) return;
+  sendComment(word, word==='pdf' ? 'PDF-Bau läuft (~1–1,5 Min.).' : 'Versandt gemeldet.');
+}
+
+/* --------------- dashboard mark shipping (#acts= deep link) ---------------
+   The claude.ai dashboard artifact cannot fetch (CSP); it window.open()s this
+   page with a base64 batch of actions. We persist the batch IMMEDIATELY into a
+   local outbox (nothing can get lost even if the network is down), then flush
+   it to door.gs (action='mark' -> Drive actions file) and auto-close the tab.
+   A non-empty outbox is also re-flushed on every normal page open (retry). */
+var OB = 'door.outbox';
+function outbox(){ try { return JSON.parse(localStorage.getItem(OB)||'[]')||[]; } catch(e){ return []; } }
+function saveOutbox(a){ try { localStorage.setItem(OB, JSON.stringify(a)); } catch(e){} }
+function takeActsHash(){
+  var m = /#acts=([^&]+)/.exec(location.hash || '');
+  if (!m) return false;
+  history.replaceState(null, '', location.pathname + location.search);
+  var acts;
+  try { acts = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]))))); }
+  catch(e){ return false; }
+  if (!Array.isArray(acts) || !acts.length) return false;
+  var box = outbox();
+  acts.forEach(function(a){
+    if (!a || !a.id || !a.action) return;
+    var key = function(x){ return String(x.id)+'|'+String(x.action)+'|'+(x.undo?'1':'0'); };
+    // an undo cancels its pending twin locally; otherwise dedup identical entries
+    if (a.undo){
+      var before = box.length;
+      box = box.filter(function(x){ return !(String(x.id)===String(a.id) && String(x.action)===String(a.action) && !x.undo); });
+      if (box.length !== before) return;      // twin was still local -> cancelled, nothing to send
+    }
+    if (!box.some(function(x){ return key(x)===key(a); })) box.push(a);
+  });
+  saveOutbox(box);
+  return true;
+}
+function shipView(msg, cls, closing){
+  el('<div class="card"><b>☁ Markierung an den Scout</b>'+
+     '<div id="shipf" class="flash '+(cls||'')+'" style="min-height:24px">'+esc(msg)+'</div>'+
+     (closing ? '<div class="note">Dieser Tab schließt sich gleich von selbst.</div>'
+              : '<div class="actions"><button class="primary" onclick="flushOutbox(true)">Nochmal senden</button>'+
+                '<button onclick="S.view=\'queue\';render();refresh()">Zur Tür</button></div>')+
+     '</div>');
+}
+function flushOutbox(interactive){
+  var box = outbox();
+  if (!box.length){ if (interactive) shipView('Nichts zu senden.', 'ok', false); return; }
+  if (S.view === 'ship') shipView('Sende ' + box.length + ' Markierung(en) …', '', false);
+  api('mark', { acts: box })
+    .then(function(j){
+      saveOutbox([]);
+      if (S.view === 'ship'){
+        shipView('✓ ' + box.length + ' Markierung(en) beim Scout gespeichert — der nächste Lauf verbucht sie.', 'ok', true);
+        setTimeout(function(){ window.close(); }, 1400);
+      }
+    })
+    .catch(function(e){
+      var msg = String(e.message)==='unconfigured' || String(e.message)==='auth'
+        ? 'Tür nicht verbunden — unten URL/TOKEN eintragen; die Markierungen bleiben hier zwischengespeichert.'
+        : 'Senden fehlgeschlagen ('+e.message+') — bleibt zwischengespeichert, nächster Versuch beim nächsten Öffnen.';
+      if (S.view === 'ship') shipView('⚠ ' + msg, 'err', false);
+      if (String(e.message)==='unconfigured' || String(e.message)==='auth'){ S.view='setup'; render(); }
+    });
+}
+
+/* --------------- manual Opus deep-check deep link (#dc=) — v3 -------------
+   The dashboard opens this page for a bot-walled posting; the user pastes the
+   full ad text; it ships as action 'deepcheck' (adText) via the same outbox
+   pipeline as marks. The next scout run feeds it into the Tier-2 Opus lane —
+   result: a fully assessed entry under "Voll geprüft" (never an auto-match,
+   liveness stays machine-unverifiable). */
+function takeDcHash(){
+  var m = /#dc=([^&]+)/.exec(location.hash || '');
+  if (!m) return false;
+  history.replaceState(null, '', location.pathname + location.search);
+  try {
+    var d = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
+    if (d && d.id){ S.dc = d; return true; }
+  } catch(e){ /* malformed -> ignore */ }
+  return false;
+}
+function dcView(){
+  var d = S.dc || {};
+  el('<div class="card"><b>🔍 Opus-Deep-Check anfordern</b>'+
+    '<div class="sub" style="margin-top:4px"><b>'+esc(d.title||'')+'</b>'+(d.company?' — '+esc(d.company):'')+
+    '<br>Anzeige öffnen, kompletten Anzeigentext kopieren, hier einfügen. Der nächste Scout-Lauf macht die volle Opus-Prüfung (Dossier + Fit) — das Ergebnis erscheint in der Prüfliste unter „Voll geprüft".</div>'+
+    (d.url ? '<div style="margin-top:6px"><a class="ext" target="_blank" rel="noopener" href="'+esc(d.url)+'">Stellenanzeige öffnen ↗</a></div>' : '')+
+    '<textarea id="dctext" style="min-height:200px" placeholder="Anzeigentext hier einfügen (Aufgaben, Anforderungen, Standort, Vertragsart …)"></textarea>'+
+    '<div class="actions"><button class="primary" onclick="dcSend()">An den Scout senden</button></div>'+
+    '<div id="shipf" class="flash"></div></div>');
+}
+function dcSend(){
+  var t = ((document.getElementById('dctext')||{}).value || '').trim();
+  if (t.length < 80) return flash('shipf','err','Das ist zu wenig Text — bitte die ganze Anzeige einfügen.');
+  var d = S.dc || {};
+  var box = outbox().filter(function(x){ return !(x.action==='deepcheck' && String(x.id)===String(d.id)); });
+  box.push({ id: d.id, action: 'deepcheck', date: new Date().toISOString().slice(0,10), adText: t.slice(0, 20000) });
+  saveOutbox(box);
+  S.dc = null; S.view = 'ship';
+  shipView('Sende …', '', false);
+  flushOutbox(false);
+}
+
+/* ------------------------ dashboard deep link (#req=) ------------------- */
+function handleHash(){
+  var m = /#req=([^&]+)/.exec(location.hash || '');
+  if (!m) return;
+  try {
+    var d = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
+    if (d && d.url){
+      S.jobId = d.url; S.view = 'job';
+      if (!findQueueItem(d.url) && !jobs()[d.url] && S.state){
+        S.state.queue = [{ id:d.url, url:d.url, company:d.company||'', title:d.title||'',
+                           fitScore:null, location:'' }].concat(S.state.queue||[]);
+      }
+    }
+  } catch(e){ /* malformed deep link -> ignore */ }
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
+/* --------------------------------- boot ---------------------------------- */
+(function(){
+  var shipped = takeActsHash();          // persist a mark batch FIRST (works even offline)
+  var wantDc = takeDcHash();             // manual deep-check form (v3)
+  var c = cfg();
+  if (wantDc){
+    if (!c.url || !c.token){ S.view = 'setup'; render(); return; }
+    S.view = 'dc'; dcView();
+    if (outbox().length) flushOutbox(false);   // ältere geparkte Pakete still mitsenden
+    return;
+  }
+  if (shipped){                          // fast path: show ship view, send, auto-close
+    S.view = 'ship';
+    if (!c.url || !c.token){ shipView('⚠ Tür nicht verbunden — Markierungen zwischengespeichert. Unten einmal URL/TOKEN eintragen.', 'err', false); S.view='setup'; render(); return; }
+    shipView('Sende …', '', false);
+    flushOutbox(false);
+    return;
+  }
+  if (!c.url || !c.token){ S.view = 'setup'; render(); return; }
+  if (outbox().length) flushOutbox(false);   // silent retry of parked marks
+  refresh().then(function(){ handleHash(); render(); startPoll(); })
+    .catch(function(){ S.view='setup'; render(); });
+})();
+</script>
+</body>
+</html>
