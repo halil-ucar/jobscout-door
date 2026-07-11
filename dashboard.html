@@ -767,6 +767,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   var DOOR_DASH = (typeof window !== "undefined") && !!window.__DOOR_DASH__;
   var DASH_CACHE_KEY = "jobscout-dash-cache";
   function doorDataCfg(){
+    if (typeof window!=="undefined" && window.__DOOR_DEMO__) return { url: "https://demo.invalid/exec", token: "demo" };
     try {
       var u = (localStorage.getItem("door.url") || "").trim();
       var t = (localStorage.getItem("door.token") || "").trim();
@@ -793,6 +794,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
   function loadData(){
     if (DOOR_DASH){
+      // Vorschau-Modus: eingebackenes Demo-Bündel statt Netz (nie in Produktion gesetzt)
+      if (typeof window!=="undefined" && window.__DOOR_DEMO__ && window.__DOOR_DEMO__.data){
+        return Promise.resolve({ data: applyBundle(window.__DOOR_DEMO__.data), source: "door" });
+      }
       var cfg = doorDataCfg();
       var cached = dashCache();
       var fromCache = function(err){
@@ -1293,6 +1298,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      „erneut senden"-Knopf; zusätzlich versucht es jeder erfolgreiche Datenabruf
      automatisch nochmal. Replays sind idempotent (door.gs dedupt Zwillinge). */
   function doorPost(obj){
+    if (typeof window!=="undefined" && window.__DOOR_DEMO__)
+      return new Promise(function(res){ setTimeout(function(){ res({ ok:true }); }, 200); });
     var cfg = doorDataCfg();
     if (!cfg) return Promise.reject(new Error("no-config"));
     obj.token = cfg.token;
@@ -1386,7 +1393,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       excluded: state.items.filter(function(it){ return it.bucket==="excluded"; }).length,
       bew: bew, beworben: bwn, verworfen: verw,
       pruef: visibleIn("unverif").length,
-      bewq: bew   // Tab-Zähler Bewerbungen = Vorgemerkt (Redesign 2026-07-10)
+      bewq: bew,   // Tab-Zähler Bewerbungen = Vorgemerkt (Redesign 2026-07-10)
+      applog: (((applogData()||{}).entries)||[]).length   // Tab "Status" = Log-Einträge
     };
   }
 
@@ -1409,6 +1417,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     { key:"overview",  label:"Start",       cnt:"treffer" },
     { key:"pruefseite",label:"Prüfen",      cnt:"pruef" },
     { key:"bewerbungen",label:"Bewerbungen", cnt:"bewq" },
+    { key:"statuslog", label:"Status",      cnt:"applog" },
     { key:"archiv",    label:"Archiv",      cnt:"archiv" }
   ];
   // Wartung gebündelt im Archiv (ersetzt den Übersichts-Banner): der amber Punkt am
@@ -1465,9 +1474,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   function doorBannerHTML(){
     if (!DOOR_DASH || !state.doorErr) return "";
     var inner = state.doorErr === "config"
-      ? '<b>Tür-Dashboard nicht verbunden.</b> Öffne einmal die '+
-        '<a href="index.html">Tür-Seite</a> und richte sie ein (Script-URL + Token) — '+
-        'diese Seite benutzt dieselbe Einrichtung automatisch mit. Danach neu laden.'
+      ? '<b>Nicht verbunden.</b> Im Reiter <a href="#" data-nav="bewerbungen">Bewerbungen</a> '+
+        'einmal die Script-URL und deinen TOKEN eintragen — danach lädt diese Seite live.'
       : '<b>Tür gerade nicht erreichbar.</b> '+
         (state.source === "cache"
           ? 'Du siehst den gespeicherten Stand von '+esc(fmtStamp(state.cachedAt))+' — Markieren funktioniert und wird nachgesendet. '
@@ -1692,7 +1700,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       // Der ✉-Vormerk-Toggle ist entfernt (user 2026-07-11): Anschreiben laufen NUR noch
       // über die Tür — der Link öffnet sie direkt mit dieser Stelle (#req-Deep-Link).
       extra = '<button class="btn-applied" data-mark="beworben" data-id="'+esc(it.id)+'">Bereits beworben</button>'+
-        (doorGui() ? '<a class="btn-letter" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(doorReqUrl(it))+'" title="Öffnet die Bewerbungs-Tür mit dieser Stelle — dort Paket anfordern (Optionsrunde, PDF, Versandt)">In der Tür öffnen</a>' : "");
+        (DOOR_DASH
+          ? '<button class="btn-letter" data-preq=\''+esc(JSON.stringify({ id:it.url||it.id, url:it.url||it.id, company:it.company||"", title:it.title||"", fit:(it.fit!=null?it.fit:null) }))+'\' title="Anschreiben-Paket hier anfordern (Optionsrunde, PDF, Versandt)">Anschreiben</button>'
+          : (doorGui() ? '<a class="btn-letter" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(doorReqUrl(it))+'" title="Öffnet die Bewerbungs-Tür mit dieser Stelle — dort Paket anfordern (Optionsrunde, PDF, Versandt)">In der Tür öffnen</a>' : ""));
     }
     return '<div class="mcard'+(col==="beworben"?" done":"")+'">'+
       (col==="beworben" ? '<span class="dot6 t"></span>' : "")+
@@ -1762,10 +1772,12 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // Manueller Opus-Deep-Check (user GO 2026-07-09): nur für Stellen ohne Opus-Urteil und
     // nur mit konfigurierter Google-Tür; nach Übermittlung zeigt der Stempel den Auftrag an.
     var dcBtn = "";
-    if (doorGui() && (it.raw||{}).scoredBy !== "opus-deepcheck"){
-      dcBtn = (it.raw||{}).deepcheckRequested
+    if ((DOOR_DASH || doorGui()) && (it.raw||{}).scoredBy !== "opus-deepcheck"){
+      dcBtn = ((it.raw||{}).deepcheckRequested || pDcReq[it.id])
         ? '<span class="checkchip" style="margin-top:0" title="Anzeigentext übermittelt — der nächste Lauf macht den vollen Opus-Check">Opus-Check angefordert</span>'
-        : '<a class="btn-g" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(doorDcUrl(it))+'" title="Anzeigentext in der Tür einfügen — der nächste Lauf macht den vollen Opus-Deep-Check (Botwall-Stellen)">Opus-Check</a>';
+        : (DOOR_DASH
+          ? '<button class="btn-g" data-pdc=\''+esc(JSON.stringify({ id:it.id, company:it.company||"", title:it.title||"", url:it.url||it.id||"" }))+'\' title="Anzeigentext hier einfügen — der nächste Lauf macht den vollen Opus-Deep-Check (Botwall-Stellen)">Opus-Check</button>'
+          : '<a class="btn-g" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(doorDcUrl(it))+'" title="Anzeigentext in der Tür einfügen — der nächste Lauf macht den vollen Opus-Deep-Check (Botwall-Stellen)">Opus-Check</a>');
     }
     return '<div class="pcard">'+
       '<div class="pcard-h">'+
@@ -1806,14 +1818,19 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // Batch-Modus (user GO 2026-07-10 #2): EIN Link übergibt der Tür alle "Selbst
     // nachsehen"-Kandidaten ohne Opus-Urteil; die Tür führt durch die Liste (Einfügen ->
     // Wächter -> Senden -> automatisch weiter). Echter <a>-Link (sandbox-sicher), Cap 80.
-    if (doorGui()){
+    if (DOOR_DASH || doorGui()){
       var dcbCands = g.nachsehen.filter(function(it){
         var r = it.raw || {};
-        return r.scoredBy !== "opus-deepcheck" && !r.deepcheckRequested;
+        return r.scoredBy !== "opus-deepcheck" && !r.deepcheckRequested && !pDcReq[it.id];
       }).slice(0, 80).map(function(it){
         return { id: it.id, company: it.company||"", title: it.title||"", url: it.url||it.id||"", fit: it.fit };
       });
-      if (dcbCands.length > 1){
+      if (dcbCands.length > 1 && DOOR_DASH){
+        P.dcbCands = dcbCands;
+        html += '<div style="margin:12px 0 2px"><button class="btn-p" data-pdcb'+
+          ' title="Führt hier durch alle Stellen: Anzeigentext einfügen, senden, automatisch weiter — jede Sendung bleibt fest ihrer Stelle zugeordnet.">'+
+          'Alle offenen Opus-Checks durchgehen ('+dcbCands.length+')</button></div>';
+      } else if (dcbCands.length > 1){
         var dcbB64 = btoa(unescape(encodeURIComponent(JSON.stringify(dcbCands))));
         html += '<div style="margin:12px 0 2px"><a class="btn-p" style="text-decoration:none;display:inline-block" target="_blank" rel="noopener noreferrer"'+
           ' href="'+esc(doorGui()+"#dcb="+encodeURIComponent(dcbB64))+'"'+
@@ -2465,12 +2482,377 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     h += '<div class="aps-src" title="Quelle: Bewerbungslog (Drive, PII-freier Auszug). Umrandeter Knopf = gemeldet, wird beim nächsten Lauf gebucht.">Stand '+esc(fmtISO(A.generated)||A.generated||"")+"</div>";
     return h;
   }
+  /* "Status" — eigene Seite zwischen Bewerbungen und Archiv (user GO 2026-07-11 #2):
+     der komplette Bewerbungsstatus (Kennzahlen, Trichter, Zeitachse, Status-Knöpfe)
+     zieht aus dem Bewerbungen-Tab hierher um. */
+  function renderStatusSeite(){
+    var html = '<div class="view"><div class="pagehead">Status</div>'+
+      '<div class="pagesub">Alle Bewerbungen mit Stand und Zeitachse — die Knöpfe melden den neuen Status an den Scout, der nächste Lauf bucht ihn ins Log.</div>';
+    var aps = renderApplogStatus();
+    html += aps || '<div class="emptybox">Noch keine Bewerbungen im Log.</div>';
+    return html + "</div>";
+  }
 
-  /* Bewerbungen = Pipeline-Seite (Redesign 2026-07-10, user GO): Vorgemerkt -> Tür ->
-     Bewerbungsstatus. Das Operative (Paket anfordern, Runden, PDF, Versandt) macht die
-     BEWERBUNGS-TÜR; Warteschlange, Briefkasten-Zweitanzeige und Studio-Notbetriebstexte
-     sind aus der veröffentlichten Seite raus. Der Cowork-Studio-Modus (window.__STUDIO__,
-     Mac) bleibt unverändert funktionsfähig. */
+  /* ---------------- Bewerbungs-Portal (Tür-Modus; user GO 2026-07-11 #2) ----------------
+     Die frühere Tür-GUI (door/index.html, bis v7) lebt jetzt HIER: Brief-Vorgänge (Paket
+     anfordern, Optionsrunde, Feinschliff, PDF, Versandt) direkt im Bewerbungen-Tab,
+     Opus-Check-Einwurf (einzeln + Batch, mit den v6-Einfüge-Wächtern) nativ aus der
+     Prüfliste, Einrichtung (Script-URL + TOKEN) inline. Spricht dasselbe door.gs
+     (state/request/comment per fetch; deepcheck-Acts über die mark/Outbox-Pipeline).
+     door/index.html ist nur noch ein Weiterleiter; seine #acts/#dc/#dcb-Deep-Links
+     landen hier und werden nativ übernommen. NUR im DOOR_DASH-Build aktiv — Artefakt
+     und Showcase-Demo bleiben unverändert. window.__DOOR_DEMO__ speist die Vorschau. */
+  var P = { view:null, jobId:null, sel:{}, sending:false, state:null, flash:"",
+            dc:null, dcDraft:"", dcWarn:null, dcb:null, dcbCands:null, sentHashes:{} };
+  var pDcReq = {};   // optimistische "Opus-Check angefordert"-Chips bis zum nächsten Lauf
+  function doorApi(action, data){
+    if (typeof window!=="undefined" && window.__DOOR_DEMO__){
+      var D = window.__DOOR_DEMO__;
+      return new Promise(function(res){ setTimeout(function(){
+        res(action==="state" ? (D.state||{ok:true,jobs:{},queue:[]}) : {ok:true}); }, 200); });
+    }
+    var c = doorDataCfg();
+    if (!c) return Promise.reject(new Error("unconfigured"));
+    var pr = (action === "state")
+      ? fetch(c.url+"?token="+encodeURIComponent(c.token)+"&action=state", { redirect:"follow" })
+      : fetch(c.url, { method:"POST", redirect:"follow",
+          body: JSON.stringify(Object.assign({ token:c.token, action:action }, data||{})) });
+    return pr.then(function(r){ return r.text(); }).then(function(t){
+      var j; try { j = JSON.parse(t); } catch(e){ throw new Error("Antwort unlesbar"); }
+      if (!j.ok) throw new Error(j.error||"Fehler");
+      return j;
+    });
+  }
+  function portalRefresh(){
+    if (!DOOR_DASH || !doorDataCfg()) return Promise.resolve();
+    return doorApi("state").then(function(j){
+      P.state = j;
+      if (state.view==="bewerbungen" || P.view) renderAll();
+    }).catch(function(e){ /* Störungen deckt das Tür-Banner ab */ });
+  }
+  function pJobs(){ return (P.state && P.state.jobs) || {}; }
+  function pQueue(){ return (P.state && P.state.queue) || []; }
+  function pQueueItem(id){
+    var q = pQueue();
+    for (var i=0;i<q.length;i++) if (q[i].id===id) return q[i];
+    return null;
+  }
+  function pPhaseChip(ph){
+    var m = { requested:["Lauf läuft …",""], revising:["Überarbeitung läuft …",""],
+              "pdf-requested":["PDF wird gebaut …",""], round:["Runde bereit","req"],
+              final:["PDF fertig","req"], sent:["versandt","req"] }[ph];
+    return m ? '<span class="stchip '+m[1]+'">'+m[0]+"</span>" : "";
+  }
+  function pRel(iso){
+    if (!iso) return "";
+    var ms = Date.now() - new Date(iso).getTime();
+    if (!(ms >= 0)) return "";
+    var mnt = Math.floor(ms/60000);
+    if (mnt < 2) return "gerade eben";
+    if (mnt < 60) return "vor "+mnt+" Min.";
+    var h = Math.floor(mnt/60);
+    if (h < 24) return "vor "+h+" Std.";
+    var d = Math.floor(h/24);
+    return d === 1 ? "gestern" : "vor "+d+" Tagen";
+  }
+  function pAllItems(){
+    var J = pJobs();
+    return Object.keys(J).sort(function(a,b){
+      return String(J[b].updated||"").localeCompare(String(J[a].updated||""));
+    }).map(function(k){
+      var j = J[k], qi = pQueueItem(k);
+      return { id:k, url:j.url||k, company:j.company||(qi&&qi.company)||"",
+               title:j.title||(qi&&qi.title)||("Vorgang "+k),
+               fit:(qi&&qi.fitScore!=null)?qi.fitScore:null, phase:j.phase, updated:j.updated };
+    });
+  }
+  function pRowHTML(it){
+    var rel = it.updated ? pRel(it.updated) : "";
+    return '<div class="stq-row" style="cursor:pointer" data-pjob="'+esc(it.id)+'">'+
+      (it.fit!=null ? '<div class="stq-fit '+fitClass(it.fit)+'">'+it.fit+"</div>" : '<div class="stq-num">–</div>')+
+      '<div class="m"><div class="t">'+esc(it.title)+'</div><div class="s">'+esc(it.company)+
+      (rel ? ' · '+esc(rel) : "")+"</div></div>"+
+      pPhaseChip(it.phase)+"</div>";
+  }
+  function portalSetupHTML(){
+    return '<div class="stq-cmds"><b>Tür verbinden</b> — einmal pro Gerät die Apps-Script-URL und deinen TOKEN eintragen (steht in deiner Einrichtung, SETUP-DOOR.md); bleibt nur in diesem Browser gespeichert.'+
+      '<input id="doorurl" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin:8px 0 0;padding:8px 10px;border:1px solid var(--b18);border-radius:8px;background:transparent;color:var(--ink)">'+
+      '<input id="doortoken" placeholder="TOKEN" style="width:60%;max-width:300px;margin:8px 6px 0 0;padding:8px 10px;border:1px solid var(--b18);border-radius:8px;background:transparent;color:var(--ink)">'+
+      '<button class="stbtn primary" id="doorsave">Verbinden</button>'+
+      '<div id="doorsavemsg" class="aps-legend" style="margin-top:6px"></div></div>';
+  }
+  function portalSectionHTML(){
+    if (!doorDataCfg()) return portalSetupHTML();
+    if (!P.state) return '<div class="stq-head">Briefe</div><div class="emptybox">Lade Vorgänge …</div>';
+    var items = pAllItems(), b = { act:[], run:[], done:[] };
+    items.forEach(function(it){
+      if (it.phase==="round" || it.phase==="final") b.act.push(it);
+      else if (it.phase==="sent") b.done.push(it);
+      else b.run.push(it);
+    });
+    var h = '<div class="stq-head">Briefe — du bist dran <span class="c">'+b.act.length+"</span></div>";
+    h += b.act.length ? b.act.map(pRowHTML).join("")
+      : '<div class="emptybox">Keine Runde wartet — oben bei „Vorgemerkt" auf „Anschreiben" tippen, um ein Paket anzufordern.</div>';
+    if (b.run.length) h += '<div class="stq-head">Läuft gerade <span class="c">'+b.run.length+"</span></div>"+b.run.map(pRowHTML).join("");
+    if (b.done.length) h += '<details class="alwfold"><summary>Erledigte Briefe <span class="c">'+b.done.length+"</span></summary>"+b.done.map(pRowHTML).join("")+"</details>";
+    return h;
+  }
+  function portalViewHTML(){
+    if (!DOOR_DASH || !P.view) return "";
+    if (P.view === "job") return portalJobHTML();
+    if (P.view === "dc") return portalDcHTML();
+    return "";
+  }
+  function portalOpenJob(d){
+    P.jobId = d.id || d.url;
+    P.sel = {}; P.flash = ""; P.view = "job"; state.view = "bewerbungen";
+    if (!pQueueItem(P.jobId) && P.state && !pJobs()[P.jobId]){
+      P.state.queue = [{ id:P.jobId, url:d.url||P.jobId, company:d.company||"",
+                         title:d.title||"", fitScore:(d.fit!=null?d.fit:null) }].concat(P.state.queue||[]);
+    }
+    renderAll();
+  }
+  function pFlashHTML(){ return '<div class="aps-legend" id="pflash" style="min-height:16px">'+esc(P.flash||"")+"</div>"; }
+  function portalJobHTML(){
+    var id = P.jobId, j = pJobs()[id], it = pQueueItem(id);
+    var company = (j&&j.company)||(it&&it.company)||"", title = (j&&j.title)||(it&&it.title)||"";
+    var url = (j&&j.url)||(it&&it.url)||id;
+    var dis = P.sending ? " disabled" : "";
+    var h = '<div class="view"><button class="btn-g" data-pback style="padding-left:0">← Bewerbungen</button>';
+    h += '<div class="stposting" style="margin-top:10px">'+
+      (it&&it.fitScore!=null ? '<div class="stq-fit '+fitClass(it.fitScore)+'">'+it.fitScore+"</div>" : "")+
+      '<div class="m"><div class="t">'+esc(title)+'</div><div class="s">'+esc(company)+"</div></div>"+
+      (j ? pPhaseChip(j.phase) : "")+"</div>"+
+      '<div style="margin:8px 0 14px"><a class="deep-open" target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">Stellenanzeige öffnen</a></div>';
+    if (!j){
+      h += '<div class="stq-cmds"><b>Noch kein Vorgang.</b> „Paket anfordern" startet den Anschreiben-Lauf — die Optionsrunde erscheint hier in ~4–5 Min.<br>'+
+        '<button class="stbtn primary" style="margin-top:8px" data-pcmd="request"'+dis+'>Paket anfordern</button></div>';
+      return h + pFlashHTML() + "</div>";
+    }
+    if (j.phase==="requested" || j.phase==="revising" || j.phase==="pdf-requested"){
+      h += '<div class="stnotice">'+(j.phase==="pdf-requested"
+        ? "Finales PDF wird gebaut (~1–1,5 Min.) …"
+        : "Der Lauf arbeitet — das Ergebnis erscheint hier automatisch.")+"</div>";
+    }
+    if (j.assumptions && j.assumptions.length){
+      h += '<div class="stq-head">Annahmen</div>'+j.assumptions.map(function(a){
+        return '<div class="dl"><span class="dash">—</span><span>'+esc(a)+"</span></div>"; }).join("");
+    }
+    if (j.round && j.round.parts && j.round.parts.length){
+      h += '<div class="stq-head">Optionsrunde <span class="c">★ = Empfehlung, vorbelegt</span></div>';
+      j.round.parts.forEach(function(pt){
+        var pn = String(pt.num);
+        if (!(pn in P.sel)) P.sel[pn] = pt.selected || pt.recommendation || "";
+        h += '<div class="stpart"><div class="stpart-h"><span class="stpart-num">'+esc(pn)+"</span>"+esc(pt.name||"")+"</div>"+
+          (pt.why ? '<div class="stwhy">'+esc(pt.why)+"</div>" : "");
+        (pt.options||[]).forEach(function(o){
+          var on = P.sel[pn]===o.code, rec = o.code===pt.recommendation;
+          h += '<button class="stopt click'+(on?" sel":"")+'" data-popt=\''+esc(JSON.stringify({p:pn, c:o.code}))+'\'>'+
+            '<span class="stopt-code">'+esc(o.code)+"</span><span>"+esc(o.text)+(rec?" ★":"")+"</span></button>";
+        });
+        h += "</div>";
+      });
+      h += '<div class="stactions"><button class="stbtn primary" data-pcmd="codes"'+dis+'>Auswahl senden (~3 Min.)</button></div>';
+    }
+    if (j.letterText){
+      h += '<div class="stq-head">Aktueller Brief</div><div class="stletter">'+
+        String(j.letterText).split(/\n{2,}/).map(function(pp){ return "<p>"+esc(pp)+"</p>"; }).join("")+"</div>";
+    }
+    var pdfUrl = j.pdfUrl || (P.state && P.state.settings && P.state.settings.pdfFileUrl) || "";
+    h += '<div class="stq-head">Feinschliff</div>'+
+      '<textarea id="pfeed" class="stfeed" placeholder="Freitext-Wunsch (z. B. „Absatz 4 kürzer") — startet eine Text-Runde (~3 Min.)"></textarea>'+
+      '<div class="stactions"><button class="stbtn" data-pcmd="feed"'+dis+'>Senden</button>'+
+      '<button class="stbtn" data-pcmd="pdf"'+(dis || (j.phase==="sent"?" disabled":""))+'>PDF final bauen</button>'+
+      (j.phase==="final" && pdfUrl ? '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(pdfUrl)+'">PDF in Drive öffnen</a>' : "")+
+      '<button class="stbtn warn" data-pcmd="versandt"'+(dis || (j.phase==="sent"?" disabled":""))+'>Versandt</button></div>'+
+      '<div class="aps-legend">„Versandt" bucht die Bewerbung (Scout + Bewerbungslog) und schließt den Vorgang.</div>';
+    return h + pFlashHTML() + "</div>";
+  }
+  function pComment(text, okMsg){
+    P.sending = true; P.flash = "wird gesendet …"; renderAll();
+    doorApi("comment", { id:P.jobId, text:text })
+      .then(function(){ P.sending = false; P.flash = okMsg; return portalRefresh(); })
+      .catch(function(e){ P.sending = false; P.flash = "Fehler: "+e.message; renderAll(); });
+  }
+  function portalCmd(cmd){
+    var j = pJobs()[P.jobId] || {};
+    if (cmd === "request"){
+      var it = pQueueItem(P.jobId) || {};
+      P.sending = true; P.flash = "wird gesendet …"; renderAll();
+      doorApi("request", { id:P.jobId, company:it.company||"", title:it.title||"", url:it.url||P.jobId })
+        .then(function(){ P.sending = false; return portalRefresh(); })
+        .catch(function(e){ P.sending = false; P.flash = "Fehler: "+e.message; renderAll(); });
+      return;
+    }
+    if (cmd === "codes"){
+      var codes = [];
+      ((j.round && j.round.parts)||[]).forEach(function(pt){
+        var c = P.sel[String(pt.num)]; if (c) codes.push(c);
+      });
+      if (!codes.length){ P.flash = "Keine Option gewählt."; return renderAll(); }
+      return pComment(codes.join(" "), "Runde gestartet — Ergebnis erscheint hier (~3 Min.).");
+    }
+    if (cmd === "feed"){
+      var t = ((document.getElementById("pfeed")||{}).value||"").trim();
+      if (!t){ P.flash = "Kein Text eingegeben."; return renderAll(); }
+      return pComment(t, "Runde gestartet — Ergebnis erscheint hier (~3 Min.).");
+    }
+    if (cmd === "pdf"){
+      if (confirm("Finales PDF jetzt deterministisch bauen?")) pComment("pdf", "PDF-Bau läuft (~1–1,5 Min.).");
+      return;
+    }
+    if (cmd === "versandt"){
+      if (confirm("Bewerbung als VERSANDT verbuchen? (Scout-Markierung + Bewerbungslog, Vorgang wird geschlossen)"))
+        pComment("versandt", "Versandt gemeldet.");
+    }
+  }
+  /* Einfüge-Wächter (aus GUI v6 portiert; lokal, 0 Tokens, asymmetrisch: nur ein
+     SICHERER Befund warnt, jede Warnung hat "Trotzdem senden") */
+  function pgNorm(s){ return String(s==null?"":s).toLowerCase().replace(/&[a-z]+;/gi," "); }
+  var PG_LEGAL = /\b(gmbh|ag|ug|se|kg|kgaa|mbh|inc|ltd|llc|co|haftungsbeschraenkt|haftungsbeschränkt|group|gruppe|holding|international)\b/g;
+  function pgCoTokens(co){
+    return pgNorm(co).replace(/\(.*?\)/g," ").replace(PG_LEGAL," ")
+      .split(/[^a-z0-9äöüß]+/).filter(function(t){ return t.length>=3; });
+  }
+  function pgTitleTokens(ti){
+    return pgNorm(ti).split(/[^a-z0-9äöüß]+/).filter(function(t){ return t.length>=5; });
+  }
+  function pgMatch(text, item){
+    var t = pgNorm(text);
+    var co = pgCoTokens((item&&item.company)||"");
+    var coFull = co.length>0 && co.every(function(k){ return t.indexOf(k)>=0; });
+    var coAny = co.some(function(k){ return t.indexOf(k)>=0; });
+    var ti = pgTitleTokens((item&&item.title)||"");
+    var tiHits = ti.filter(function(k){ return t.indexOf(k)>=0; }).length;
+    return { coFull:coFull, coAny:coAny, tiHits:tiHits,
+             ok: coFull || (coAny && tiHits>=1) || tiHits>=2 };
+  }
+  function pgCross(text, item, others){
+    if (pgMatch(text, item).coAny) return null;
+    for (var i=0;i<(others||[]).length;i++){
+      var o = others[i];
+      if (!o || String(o.id)===String(item.id)) continue;
+      if (pgMatch(text, o).coFull) return o;
+    }
+    return null;
+  }
+  var PG_NAV = ["cookie","impressum","datenschutz","anmelden","login","registrieren",
+    "newsletter","akzeptieren","ablehnen","einstellungen","navigation","startseite","warenkorb","agb"];
+  function pgChrome(text){
+    var t = pgNorm(text);
+    return PG_NAV.filter(function(w){ return t.indexOf(w)>=0; }).length >= 4;
+  }
+  function pgHash(s){
+    var t = pgNorm(s).replace(/\s+/g," ").trim(), h = 5381;
+    for (var i=0;i<t.length;i++) h = ((h<<5)+h+t.charCodeAt(i))|0;
+    return String(h);
+  }
+  function pgCheck(text, item, others){
+    var h = pgHash(text);
+    if (P.sentHashes[h]) return { kind:"dup",
+      msg:'Das ist derselbe Text wie eben bei „'+P.sentHashes[h]+'" — hast du die neue Anzeige kopiert?' };
+    var m = pgMatch(text, item);
+    if (pgChrome(text) && !m.ok) return { kind:"chrome",
+      msg:"Das sieht nach Webseiten-Gerüst aus (Cookie-/Menü-Texte), nicht nach der Anzeige." };
+    if (!m.ok){
+      var sus = pgCross(text, item, others);
+      if (sus) return { kind:"cross", suspect:sus,
+        msg:'Der Text sieht nach „'+(sus.company||"?")+'" aus — du bist aber bei „'+(item.company||"?")+'".' };
+      return { kind:"nomatch",
+        msg:'Der Text erwähnt weder „'+(item.company||"?")+'" noch Wörter aus dem Stellentitel.' };
+    }
+    return null;
+  }
+  function pgChipHTML(text, item){
+    if (!text || text.length < 40) return "";
+    var m = pgMatch(text, item);
+    return (m.coFull || m.coAny)
+      ? '<span class="checkchip" style="margin-top:0">✓ '+esc((item&&item.company)||"")+' im Text erkannt</span>'
+      : m.ok ? '<span class="checkchip" style="margin-top:0">✓ Titelwörter im Text erkannt</span>'
+      : '<span class="whychip floor">⚠ Firma/Titel nicht im Text gefunden</span>';
+  }
+  function portalDcHTML(){
+    var B = P.dcb, d = P.dc || {};
+    var dis = P.sending ? " disabled" : "";
+    var h = '<div class="view"><button class="btn-g" data-pback style="padding-left:0">'+
+      (B ? "← Batch beenden" : "← Zurück")+"</button>";
+    if (B){
+      var sent = Object.keys(B.sent).length;
+      if (sent >= B.items.length){
+        return h+'<div class="stq-cmds" style="margin-top:12px"><b>✓ Batch fertig</b> — '+sent+
+          ' Anzeigentext(e) übergeben; der nächste Lauf macht die vollen Opus-Checks (Ergebnis: Prüfliste, „Voll geprüft").'+
+          (B.lastSent ? '<br><button class="stbtn" style="margin-top:8px" data-pdcundo>✗ Letzte Sendung rückgängig</button>' : "")+
+          "</div></div>";
+      }
+      h += '<div class="pagesub" style="margin:10px 0 2px">Opus-Check-Batch · Stelle '+(B.idx+1)+" von "+B.items.length+" · "+sent+" gesendet</div>";
+    }
+    h += '<div class="pagehead" style="font-size:20px;margin-top:'+(B?"2px":"10px")+'">Opus-Check: '+esc(d.company||"?")+"</div>"+
+      '<div class="pagesub"><b>'+esc(d.title||"")+"</b> · Anzeige öffnen, kompletten Anzeigentext kopieren, hier einfügen — der nächste Lauf macht die volle Opus-Prüfung (Dossier + Fit).</div>"+
+      '<div class="stactions" style="margin:2px 0 10px">'+
+      (d.url ? '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(d.url)+'">Anzeige öffnen</a>' : "")+
+      (B ? '<button class="stbtn" data-pdcskip>Überspringen →</button>' : "")+"</div>"+
+      '<textarea id="pdctext" class="stfeed" style="min-height:200px" placeholder="Anzeigentext hier einfügen (Aufgaben, Anforderungen, Standort, Vertragsart …)">'+esc(P.dcDraft||"")+"</textarea>"+
+      '<div id="pdcchip" style="margin:6px 0;min-height:22px">'+pgChipHTML(P.dcDraft||"", d)+"</div>";
+    if (P.dcWarn){
+      h += '<div class="pshwarn" style="margin:8px 0">⚠ '+esc(P.dcWarn.msg)+"</div>"+
+        '<div class="stactions">'+
+        (P.dcWarn.kind==="cross" && P.dcWarn.suspect && B
+          ? '<button class="stbtn primary" data-pdcswitch="'+esc(String(P.dcWarn.suspect.id))+'">Zur Stelle „'+esc(P.dcWarn.suspect.company||"?")+'" wechseln</button>' : "")+
+        '<button class="stbtn warn" data-pdcsend="force">Trotzdem senden</button>'+
+        '<button class="stbtn" data-pdccancel>Abbrechen</button></div>';
+    } else {
+      h += '<div class="stactions"><button class="stbtn primary" data-pdcsend'+dis+'>An den Scout senden</button></div>';
+    }
+    if (B && B.lastSent){
+      h += '<div class="aps-legend">Zuletzt gesendet: <b>'+esc(B.lastSent.company||"")+'</b> ✓ '+
+        '<button class="stbtn" style="margin-left:8px;padding:3px 9px;font-size:11px" data-pdcundo>✗ Rückgängig</button></div>';
+    }
+    return h + pFlashHTML() + "</div>";
+  }
+  function pdcShip(item, text){
+    doorShip([{ id:item.id, action:"deepcheck", date:new Date().toISOString().slice(0,10),
+                adText:String(text).slice(0,20000) }]);
+    P.sentHashes[pgHash(text)] = item.company || item.title || String(item.id);
+    pDcReq[item.id] = true;
+  }
+  function pdcSend(force){
+    var B = P.dcb, item = B ? B.items[B.idx] : (P.dc||{});
+    var t = ((document.getElementById("pdctext")||{}).value||"").trim();
+    if (t.length < 80){ P.flash = "Das ist zu wenig Text — bitte die ganze Anzeige einfügen."; return renderAll(); }
+    if (!force){
+      var g = pgCheck(t, item, B ? B.items : []);
+      if (g){ P.dcWarn = g; P.dcDraft = t; return renderAll(); }
+    }
+    pdcShip(item, t);
+    P.dcDraft = ""; P.dcWarn = null; P.flash = "";
+    if (B){
+      B.sent[item.id] = true; B.lastSent = item;
+      var n = B.items.length, moved = false;
+      for (var i=1;i<=n;i++){
+        var k = (B.idx+i)%n;
+        if (!B.sent[B.items[k].id]){ B.idx = k; P.dc = B.items[k]; moved = true; break; }
+      }
+      if (!moved) P.dc = null;
+      return renderAll();
+    }
+    P.view = null; P.dc = null;
+    renderAll();
+  }
+  function pdcUndo(){
+    var B = P.dcb, item = B && B.lastSent;
+    if (!item) return;
+    doorShip([{ id:item.id, action:"deepcheck", date:new Date().toISOString().slice(0,10), undo:true }]);
+    delete B.sent[item.id]; delete pDcReq[item.id];
+    var label = item.company || item.title || String(item.id);
+    Object.keys(P.sentHashes).forEach(function(k){ if (P.sentHashes[k]===label) delete P.sentHashes[k]; });
+    for (var i=0;i<B.items.length;i++) if (String(B.items[i].id)===String(item.id)){ B.idx = i; break; }
+    B.lastSent = null; P.dc = B.items[B.idx]; P.dcDraft = "";
+    renderAll();
+  }
+
+  /* Bewerbungen = Pipeline-Seite (Redesign 2026-07-10, user GO): Vorgemerkt -> Portal ->
+     Status-Seite. Der Cowork-Studio-Modus (window.__STUDIO__, Mac) bleibt unverändert
+     funktionsfähig. */
   function renderBewerbungenPublished(){
     var html = '<div class="view"><div class="pagehead">Bewerbungen</div>';
     var bew = withMark("bewerben"), done = beworbenAll();
@@ -2478,7 +2860,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     html += bew.length
       ? bew.map(function(it){ return mcardHTML(it,"bewerben"); }).join("")
       : '<div class="emptybox">Noch nichts vorgemerkt — in Start oder Prüfen auf „Bewerben" tippen.</div>';
-    if (doorGui()){
+    if (DOOR_DASH){
+      // Bewerbungs-Portal (user GO 2026-07-11 #2): die Tür-GUI lebt jetzt HIER — kein
+      // Tür-Knopf mehr; Briefe/Vorgänge direkt auf dieser Seite.
+      html += portalSectionHTML();
+    } else if (doorGui()){
       html += '<a class="doorcard" target="_blank" rel="noopener noreferrer" href="'+esc(doorGui())+'">Bewerbungs-Tür öffnen'+
         '<span class="s">Anschreiben-Paket anfordern · Optionsrunden beantworten · PDF bauen · Versandt verbuchen</span></a>';
     } else {
@@ -2490,7 +2876,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<input id="lwsetup2" placeholder="https://…github.io/jobscout-door/" style="width:68%;max-width:420px;margin:8px 6px 0 0;padding:7px 10px;border:1px solid var(--b18);border-radius:8px;background:transparent;color:var(--ink)">'+
         '<button class="stbtn primary" id="lwsave2">Speichern</button></div>';
     }
-    html += renderApplogStatus();
+    // (Bewerbungsstatus lebt seit 2026-07-11 #2 auf der eigenen Seite "Status")
     if (done.length){
       html += '<div class="stq-head">Bereits beworben <span class="c">'+done.length+"</span></div>"+
         '<div class="beworben-grid">'+done.map(function(it){ return mcardHTML(it,"beworben"); }).join("")+"</div>";
@@ -2503,7 +2889,6 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var live = stLive(), dis = studio.busy ? " disabled" : "";
     var html = '<div class="view"><div class="pagehead">Bewerbungen</div>'+
       '<div class="pagesub">Live-Studio — Stelle öffnen, Optionen anklicken, Feinschliff schreiben: alles hier auf der Seite.</div>';
-    html += renderApplogStatus();
     html += stBar();
     if (S && S.notice) html += '<div class="stnotice">'+esc(S.notice)+"</div>";
     if (S && S.posting){
@@ -2938,10 +3323,12 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     pruneMarks(); pruneLogmarks();
     renderNav(); renderLive();
     var host = document.getElementById("viewhost");
-    host.innerHTML = doorBannerHTML() + (state.view==="overview" ? renderOverview()
+    var pv = DOOR_DASH ? portalViewHTML() : "";   // Portal-Untersichten (Vorgang/Opus-Check)
+    host.innerHTML = doorBannerHTML() + (pv || (state.view==="overview" ? renderOverview()
       : state.view==="pruefseite" ? renderPruefseite()
       : state.view==="bewerbungen" ? renderBewerbungen()
-      : renderArchiv());
+      : state.view==="statuslog" ? renderStatusSeite()
+      : renderArchiv()));
     renderExportBar();
   }
 
@@ -3015,6 +3402,65 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       } else if (inp2){ inp2.style.borderColor = "var(--amber)"; inp2.placeholder = "GitHub-Pages-URL der Tür-GUI (nicht die script.google.com-URL)"; }
       return;
     }
+    // ---- Bewerbungs-Portal (Tür-Modus) ----
+    var pj = e.target.closest("[data-pjob]");
+    if (pj){ portalOpenJob({ id: pj.getAttribute("data-pjob") }); return; }
+    var pr = e.target.closest("[data-preq]");
+    if (pr){ try { portalOpenJob(JSON.parse(pr.getAttribute("data-preq"))); } catch(err){} return; }
+    if (e.target.closest("[data-pback]")){
+      P.view = null; P.dc = null; P.dcb = null; P.dcDraft = ""; P.dcWarn = null; P.flash = "";
+      renderAll(); return;
+    }
+    var pc = e.target.closest("[data-pcmd]");
+    if (pc){ portalCmd(pc.getAttribute("data-pcmd")); return; }
+    var po = e.target.closest("[data-popt]");
+    if (po){ try { var pp = JSON.parse(po.getAttribute("data-popt")); P.sel[pp.p] = pp.c; renderAll(); } catch(err){} return; }
+    var pd = e.target.closest("[data-pdc]");
+    if (pd){ try { P.dc = JSON.parse(pd.getAttribute("data-pdc")); P.dcb = null; P.dcDraft = ""; P.dcWarn = null; P.view = "dc"; renderAll(); } catch(err){} return; }
+    if (e.target.closest("[data-pdcb]")){
+      if (P.dcbCands && P.dcbCands.length){
+        P.dcb = { items: P.dcbCands, idx: 0, sent: {}, lastSent: null };
+        P.dc = P.dcb.items[0]; P.dcDraft = ""; P.dcWarn = null; P.view = "dc"; renderAll();
+      }
+      return;
+    }
+    var ps = e.target.closest("[data-pdcsend]");
+    if (ps){ pdcSend(ps.getAttribute("data-pdcsend") === "force"); return; }
+    if (e.target.closest("[data-pdccancel]")){ P.dcWarn = null; renderAll(); return; }
+    var pw = e.target.closest("[data-pdcswitch]");
+    if (pw){
+      var wid = pw.getAttribute("data-pdcswitch");
+      if (P.dcb){
+        for (var wi=0; wi<P.dcb.items.length; wi++)
+          if (String(P.dcb.items[wi].id)===String(wid)){ P.dcb.idx = wi; P.dc = P.dcb.items[wi]; break; }
+      }
+      P.dcWarn = null; renderAll(); return;
+    }
+    if (e.target.closest("[data-pdcskip]")){
+      if (P.dcb){
+        var n0 = P.dcb.items.length;
+        for (var si=1; si<=n0; si++){
+          var sk = (P.dcb.idx+si)%n0;
+          if (!P.dcb.sent[P.dcb.items[sk].id]){ P.dcb.idx = sk; P.dc = P.dcb.items[sk]; break; }
+        }
+        P.dcDraft = ""; P.dcWarn = null; renderAll();
+      }
+      return;
+    }
+    if (e.target.closest("[data-pdcundo]")){ pdcUndo(); return; }
+    if (e.target.closest("#doorsave")){
+      var du = ((document.getElementById("doorurl")||{}).value||"").trim();
+      var dtk = ((document.getElementById("doortoken")||{}).value||"").trim();
+      var msg = document.getElementById("doorsavemsg");
+      if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(du)){
+        if (msg) msg.textContent = "Das ist keine Apps-Script-Web-App-URL (…/exec)."; return;
+      }
+      if (dtk.length < 8){ if (msg) msg.textContent = "TOKEN fehlt oder ist zu kurz."; return; }
+      try { localStorage.setItem("door.url", du); localStorage.setItem("door.token", dtk); } catch(err){}
+      if (msg) msg.textContent = "Teste Verbindung …";
+      refresh(); portalRefresh();
+      return;
+    }
     if (e.target.closest("[data-lwpend]")){ lwMarkPending(); }
     // 🔍 Opus-Check ist seit 2026-07-10 ein echter <a>-Link (doorDcUrl) — kein Handler nötig.
     // Tür-Outbox-Link geklickt: Navigation läuft als Link-Default weiter; Outbox optimistisch
@@ -3063,11 +3509,42 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
 
   document.addEventListener("input", function(e){
     if (e.target && e.target.id === "stfeed") studio.feedDraft = e.target.value;
+    if (e.target && e.target.id === "pdctext"){
+      P.dcDraft = e.target.value; P.dcWarn = null;
+      var chip = document.getElementById("pdcchip");
+      if (chip) chip.innerHTML = pgChipHTML(P.dcDraft, P.dc||{});
+    }
   });
   document.addEventListener("submit", function(e){
     if (e.target && e.target.className === "lwform") lwMarkPending();
   });
 
+  // Tür-Modus: Deep-Links der früheren GUI nativ übernehmen (der index.html-Weiterleiter
+  // reicht #acts/#dc/#dcb hierher durch — Reserve-Artefakt und alte Lesezeichen bleiben heil).
+  if (DOOR_DASH){
+    (function(){
+      var hash = location.hash || "", took = false;
+      function dec(s){ return JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(s))))); }
+      var m = /#acts=([^&]+)/.exec(hash);
+      if (m){ try { var acts = dec(m[1]);
+        if (Array.isArray(acts) && acts.length){ doorShip(acts); took = true; } } catch(e){} }
+      var md = /#dc=([^&]+)/.exec(hash);
+      if (md){ try { var dd = dec(md[1]);
+        if (dd && dd.id){ P.dc = dd; P.dcb = null; P.view = "dc"; state.view = "pruefseite"; took = true; } } catch(e){} }
+      var mb = /#dcb=([^&]+)/.exec(hash);
+      if (mb){ try { var list = dec(mb[1]);
+        if (Array.isArray(list)){
+          var items = list.filter(function(x){ return x && x.id; });
+          if (items.length){ P.dcb = { items:items, idx:0, sent:{}, lastSent:null };
+            P.dc = items[0]; P.view = "dc"; state.view = "pruefseite"; took = true; }
+        } } catch(e){} }
+      if (took) history.replaceState(null, "", location.pathname + location.search);
+    })();
+    portalRefresh();
+    setInterval(function(){
+      if (document.visibilityState === "visible" && (state.view === "bewerbungen" || P.view)) portalRefresh();
+    }, 20000);
+  }
   refresh();
   stInit();                       // studio live channel (no-op without __STUDIO__)
   lwPoll();                       // letter mailbox (no-op without worker config)
