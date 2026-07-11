@@ -122,9 +122,8 @@
   .opt b { font:600 11.5px var(--mono); color:var(--meta); background:var(--chipbg);
        border-radius:6px; padding:2px 7px; flex:none; }
   .opt .grow { min-width:0; }
-  .opt.rec { background:var(--green-bg); border-color:var(--green-line); }
-  .opt.rec:hover { background:var(--green-bg-h); }
-  .opt.sel, .opt.rec.sel { border-color:var(--ink); background:var(--panel); }
+  /* (Gruene Empfehlungs-Flaeche entfernt, user 2026-07-11: der Stern traegt die Empfehlung allein) */
+  .opt.sel { border-color:var(--ink); background:var(--panel); }
   .opt.sel:hover { background:var(--hover); }
   .opt.sel b { color:#fff; background:var(--ink); }
   .selchip { flex:none; font-size:10.5px; font-weight:700; letter-spacing:.03em; color:#fff;
@@ -381,7 +380,7 @@ function renderJob(){
         (pt.why?'<div class="why">'+esc(pt.why)+'</div>':'');
       (pt.options||[]).forEach(function(o){
         var on = S.sel[pn]===o.code, rec = o.code===pt.recommendation;
-        h += '<button class="opt'+(on?' sel':'')+(rec?' rec':'')+'" onclick="pick(\''+esc(pn)+'\',\''+esc(o.code)+'\')">'+
+        h += '<button class="opt'+(on?' sel':'')+'" onclick="pick(\''+esc(pn)+'\',\''+esc(o.code)+'\')">'+
           '<b>'+esc(o.code)+'</b><span class="grow">'+esc(o.text)+
           (rec?' <span class="star">★</span>':'')+'</span>'+
           (on?'<span class="selchip">gewählt</span>':'')+'</button>';
