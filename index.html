@@ -65,6 +65,7 @@
        display:flex; align-items:center; gap:9px; }
   .conn { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
        color:var(--meta); white-space:nowrap; flex:none; }
+  .conn[hidden] { display:none; } /* sonst schlägt display:inline-flex das hidden-Attribut */
   .conn .dot { width:7px; height:7px; border-radius:50%; background:var(--mut2); flex:none; }
   .conn.ok { color:var(--green); }
   .conn.ok .dot { background:var(--green2); }
@@ -150,6 +151,7 @@
   .bcnt { color:var(--meta); font-weight:600; font-size:11.5px; font-family:var(--mono);
           background:var(--chipbg); border-radius:999px; padding:1px 8px; }
   details { margin-top:22px; }
+  .card details { margin-top:2px; } /* in Karten traegt die Karte den Abstand — sonst Totraum ueber "Aktueller Brief" */
   .note { font-size:12.5px; color:var(--meta); margin-top:9px; }
   .flash { font-size:13px; margin-top:8px; min-height:18px; }
   .flash.ok { color:var(--green2); } .flash.err { color:var(--red); }
@@ -231,7 +233,10 @@ function el(html){
   // Verbindungsstatus im Kopf (user 2026-07-11)
   var c = cfg(), conn = document.getElementById('conn'), ct = document.getElementById('connt');
   if (conn && ct){
-    if (!c.url || !c.token){ conn.hidden = true; }
+    // "Verbinde …" nur, wo wirklich geladen wird (queue/job) — die Deep-Link-Ansichten
+    // (#dc/#dcb/ship) holen keinen Status; dort stünde es sonst dauerhaft und falsch.
+    var loading = !S.state && (S.view === 'queue' || S.view === 'job');
+    if (!c.url || !c.token || (!S.state && !loading)){ conn.hidden = true; }
     else {
       conn.hidden = false;
       conn.className = 'conn' + (S.state ? ' ok' : '');
@@ -349,7 +354,7 @@ function renderJob(){
   var company = (j&&j.company) || (it&&it.company) || '';
   var title = (j&&j.title) || (it&&it.title) || '';
   var url = (j&&j.url) || (it&&it.url) || id;
-  var h = '<button class="back" onclick="S.view=\'queue\';render()">Zurück</button>';
+  var h = '<button class="back" onclick="S.view=\'queue\';render()">← Zurück</button>';
   h += '<div class="card"><div class="row">'+
     (it && it.fitScore!=null ? '<div class="'+fitCls(it.fitScore)+'">'+it.fitScore+'</div>' : '')+
     '<div class="grow"><b>'+esc(title)+'</b><div class="sub">'+esc(company)+'</div></div>'+

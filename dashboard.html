@@ -485,11 +485,6 @@ a{color:inherit;text-decoration:none}
 @media (max-width:640px){
   .aps-row{flex-wrap:wrap;row-gap:5px}
   .aps-row .m{flex:1 1 100%}
-  .hstat{padding:0 16px 2px 0}
-  .hstat+.hstat{padding-left:16px}
-  .hstat .num{font-size:29px;letter-spacing:-.03em}
-  .hstat .lbl{letter-spacing:.06em;margin-top:7px}
-  .hstat.chart{display:none}
   .listcard .row{padding:13px 14px}
   .listcard .deepwrap{padding:0 14px 14px}
   .racts{padding-left:55px}
@@ -608,6 +603,10 @@ a{color:inherit;text-decoration:none}
    (z. B. "Werkstudent" unter Vertragsart), bleibt er als .sub sichtbar. */
 .arclist.bygrund .areason{display:none}
 .arclist.bygrund .areason.sub{display:inline}
+/* Unter Fit-40: der Sektionskopf IST der Grund — 13x "Grund: Fit unter 40 (Opus)" in den
+   Zeilen war reine Wiederholung und zwang Fit+Details auf dem Handy in eine dritte Zeile.
+   Der Score bleibt als nackte Zahl prominent (er ist hier selbst der Grund). */
+.arclist.nogrund .areason{display:none}
 /* Score tritt zurück, wo er nicht der Grund war (user GO 2026-07-11) */
 .arclist.bygrund .afit{width:auto;font-size:11.5px}
 .arclist.bygrund .afit:not(:empty)::before{content:"Fit ";font-size:10px;color:var(--mut2)}
@@ -679,6 +678,27 @@ a.pmain{min-width:0}
   .kpis{gap:18px}
   .arow{flex-wrap:wrap}
   .areason{flex-basis:100%;padding-left:18px}
+  /* wickelt "Details" in Zeile 2, sitzt es rechtsbündig unter der Fit-Zahl statt lose links */
+  .arow .btn-g{margin-left:auto}
+}
+/* ---------- Hero-Kennzahlen auf schmalen Screens (Politur 2026-07-11) ----------
+   Festes Raster statt Umbruch-Flex: beim Flex-Umbruch behielt die erste Kennzahl der
+   zweiten Zeile ihr border-left — eine hängende Trennlinie am Zeilenanfang (Start:
+   "Neu — 3 Tage", Archiv: "Verworfen"). Im Raster sitzen die Linien deterministisch
+   NUR zwischen den Spalten. Steht am Ende des Stylesheets, damit es die Desktop-
+   Regeln von .hero.sm (Zeile ~558) bei gleicher Spezifität sicher überstimmt. */
+@media (max-width:699px){
+  .hstat.chart{display:none} /* 641-699px: wickelte sonst allein (mit Linie) in Zeile 2 */
+}
+@media (max-width:640px){
+  .hero{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));row-gap:18px}
+  .hero .hstat,.hero .hstat+.hstat{border-left:0;padding:0 10px 2px 0}
+  .hero .hstat .num{font-size:29px;letter-spacing:-.03em}
+  .hero .hstat .lbl{letter-spacing:.06em;margin-top:7px}
+  .hero .hstat:nth-child(2n){border-left:1px solid var(--b09);padding-left:16px}
+  .hero.sm{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .hero.sm .hstat,.hero.sm .hstat+.hstat{border-left:0;padding:2px 10px 2px 0}
+  .hero.sm .hstat:not(:nth-child(3n+1)){border-left:1px solid var(--b09);padding-left:14px}
 }
 @media (prefers-reduced-motion:reduce){*{transition-duration:.001ms !important}}
 </style>
@@ -1733,8 +1753,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         var boxId = "alwpc-"+it.id;
         alwBox = '<div style="margin:6px 0 2px">'+
           '<textarea class="alwta" id="'+esc(boxId)+'" readonly rows="2">'+esc(h3+"\n*."+h3)+"</textarea>"+
+          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;row-gap:6px">'+
           '<button class="btn-o" data-copy="'+esc(boxId)+'">Freigabe-Zeilen kopieren</button>'+
-          '<span class="pagesub" style="margin-left:8px">in der Cloud-Umgebung unten anfügen</span></div>';
+          '<span class="pagesub" style="margin:0;flex:1;min-width:120px">in der Cloud-Umgebung unten anfügen</span></div></div>';
       }
     }
     if (sec==="rest") why += '<span class="whychip sweep">'+esc(sweepChip(it.raw||{}))+"</span>";
@@ -2634,7 +2655,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<span class="rdate">Unter Fit-40 (Opus-bewertet)</span>'+
         '<span class="rid">'+floor.length+' Stellen · dauerhaft</span>'+
         '<span class="rlabel" title="Sonnet-Schätzungen archivieren nie — die bleiben in der Prüfliste, bis ein echter Opus-Check lief.">Voll bewertet, Fit unter 40 — mit Dossier nachschlagbar.</span>'+
-      "</div>" + '<div class="listcard arclist">'+floor.map(arowHTML).join("")+"</div></div>";
+      "</div>" + '<div class="listcard arclist nogrund">'+floor.map(arowHTML).join("")+"</div></div>";
     }
     // --- Offline: die jüngsten toten Anzeigen direkt sichtbar, der Rest hinter einem klar
     //     als Knopf erkennbaren vollbreiten Aufklapper (innen nach Lauf gruppiert) —
