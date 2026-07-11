@@ -33,7 +33,7 @@
   :root {
     --ink:#191B1D; --ink-hover:#2F3235; --text2:#3A3D40; --meta:#6E7276;
     --mut1:#A1A3A2; --mut2:#ACAFAE;
-    --bg:#F5F5F2; --bg-hi:#FAFAF8; --panel:#F4F4F0; --hover:#F0F0EB; --chipbg:#ECECE7;
+    --bg:#F2F2EE; --bg-hi:#FAFAF8; --panel:#F4F4F0; --hover:#F0F0EB; --chipbg:#EAEAE4;
     --shadow:0 1px 1px rgba(20,21,19,.04),0 2px 6px rgba(20,21,19,.04),0 10px 28px rgba(20,21,19,.05);
     --shadow-h:0 1px 1px rgba(20,21,19,.05),0 4px 10px rgba(20,21,19,.06),0 16px 40px rgba(20,21,19,.09);
     --green:#16794C; --green2:#1F9256; --green-bg:#EAF5EE; --green-bg-h:#DBEEE2; --green-line:#CDE7D8;
@@ -69,10 +69,10 @@
        box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 1px 2px rgba(20,21,19,.2); }
   h1 small { color:var(--meta); font-weight:400; font-size:12px; letter-spacing:0; }
   .card { background:var(--card); border:1px solid var(--b07);
-          border-radius:16px; padding:13px 15px; margin:0 0 11px; box-shadow:var(--shadow); }
+          border-radius:18px; padding:14px 16px; margin:0 0 12px; box-shadow:var(--shadow); }
   /* Tabellen-Karte (user 2026-07-11): eine weisse Karte pro Gruppe, Zeilen mit Haarlinien —
      exakt die Listen-Sprache des Dashboards. */
-  .listcard { background:var(--card); border:1px solid var(--b07); border-radius:18px;
+  .listcard { background:var(--card); border:1px solid var(--b07); border-radius:20px;
           box-shadow:var(--shadow); overflow:hidden; margin:0 0 14px; }
   .lrow { display:flex; gap:12px; align-items:center; min-width:0; padding:13px 15px;
           cursor:pointer; transition:background .12s ease; }
@@ -118,12 +118,20 @@
          text-align:left; margin:6px 0 0; padding:11px 13px; font-weight:400;
          background:#fff; border:1px solid var(--b12); border-radius:11px; color:var(--ink); }
   .opt:hover { border-color:var(--b18); background:var(--hover); }
-  .opt { border-radius:12px; }
+  .opt { border-radius:12px; align-items:center; }
   .opt b { font:600 11.5px var(--mono); color:var(--meta); background:var(--chipbg);
-       border-radius:6px; padding:2px 7px; flex:none; align-self:flex-start; }
-  .opt.sel { border-color:var(--ink); background:var(--panel); }
+       border-radius:6px; padding:2px 7px; flex:none; }
+  .opt .grow { min-width:0; }
+  .opt.rec { background:var(--green-bg); border-color:var(--green-line); }
+  .opt.rec:hover { background:var(--green-bg-h); }
+  .opt.sel, .opt.rec.sel { border-color:var(--ink); background:var(--panel); }
   .opt.sel:hover { background:var(--hover); }
   .opt.sel b { color:#fff; background:var(--ink); }
+  .selchip { flex:none; font-size:10.5px; font-weight:700; letter-spacing:.03em; color:#fff;
+       background:var(--ink); border-radius:999px; padding:3px 9px; margin-left:auto; }
+  .pnum { font:600 11.5px var(--mono); color:var(--meta); background:var(--chipbg);
+       border-radius:6px; padding:2px 7px; margin-right:8px; vertical-align:1px; }
+  .actions button.primary { flex:1 1 auto; }
   .opt .star { color:var(--amber); font-size:12px; }
   .part { margin:15px 0 4px; }
   .part h3 { font-size:14px; margin:0; }
@@ -345,7 +353,7 @@ function renderJob(){
 
   if (!j){
     h += '<div class="card"><b>Noch kein Vorgang.</b>'+
-      '<div class="sub" style="margin-top:4px">„Paket anfordern" startet den kompletten Anschreiben-Lauf (Regeln aus Drive, Lint-Gates). Die Optionsrunde erscheint hier in ~4–5 Min.</div>'+
+      '<div class="sub" style="margin-top:4px">Startet den Anschreiben-Lauf — die Optionsrunde erscheint hier in ~4–5 Min.</div>'+
       '<div class="actions"><button class="primary" '+(S.sending.req?'disabled':'')+' onclick="reqPackage()">Paket anfordern</button></div>'+
       '<div id="jf" class="flash"></div></div>';
     return el(h);
@@ -363,17 +371,20 @@ function renderJob(){
   }
 
   if (j.round && j.round.parts && j.round.parts.length){
-    h += '<div class="card"><b>Optionsrunde</b> <span class="sub">(★ = Empfehlung, vorbelegt — antippen zum Ändern)</span>';
+    // Optionsrunden-Redesign (user GO 2026-07-11): Empfehlung als gruene Flaeche, gewaehlte
+    // Option mit "gewaehlt"-Chip + Tinte-Rand, nummerierte Schritt-Koepfe, volle Sende-Taste.
+    h += '<div class="card"><b>Optionsrunde</b> <span class="sub">★ = Empfehlung, vorbelegt</span>';
     j.round.parts.forEach(function(pt){
       var pn = String(pt.num);
       if (!(pn in S.sel)) S.sel[pn] = pt.selected || pt.recommendation || '';
-      h += '<div class="part"><h3>'+esc(pn)+'. '+esc(pt.name||'')+'</h3>'+
+      h += '<div class="part"><h3><span class="pnum">'+esc(pn)+'</span>'+esc(pt.name||'')+'</h3>'+
         (pt.why?'<div class="why">'+esc(pt.why)+'</div>':'');
       (pt.options||[]).forEach(function(o){
-        var on = S.sel[pn]===o.code;
-        h += '<button class="opt'+(on?' sel':'')+'" onclick="pick(\''+esc(pn)+'\',\''+esc(o.code)+'\')">'+
-          '<b>'+esc(o.code)+'</b><span>'+esc(o.text)+
-          (o.code===pt.recommendation?' <span class="star">★</span>':'')+'</span></button>';
+        var on = S.sel[pn]===o.code, rec = o.code===pt.recommendation;
+        h += '<button class="opt'+(on?' sel':'')+(rec?' rec':'')+'" onclick="pick(\''+esc(pn)+'\',\''+esc(o.code)+'\')">'+
+          '<b>'+esc(o.code)+'</b><span class="grow">'+esc(o.text)+
+          (rec?' <span class="star">★</span>':'')+'</span>'+
+          (on?'<span class="selchip">gewählt</span>':'')+'</button>';
       });
       h += '</div>';
     });
