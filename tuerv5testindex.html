@@ -204,24 +204,24 @@ function setupSave(){
     .catch(function(){ flash('suf','err','Verbindung fehlgeschlagen — URL/TOKEN prüfen.'); S.view='setup'; });
 }
 
-/* EINE Liste statt Warteschlange/Briefkasten (Redesign 2026-07-10, user GO): sortiert
-   nach "wer ist dran" — aktive Vorgänge oben, Neues darunter, Erledigtes eingeklappt.
-   Vorgänge ohne Queue-Eintrag (z. B. per Deep-Link gestartet) erscheinen mit in den Blöcken. */
+/* NUR VORGÄNGE (user 2026-07-11): die Tür zeigt keine Treffer-Warteschlange mehr — neue
+   Stellen kommen ausschließlich per Deep-Link aus dem Dashboard hierher (Bewerbungen >
+   Vorgemerkt > "In der Tür öffnen"). Sortiert nach "wer ist dran"; Erledigtes eingeklappt.
+   door.gs liefert die queue unverändert mit — sie wird hier nur nicht mehr angezeigt
+   (renderJob/#req nutzen sie weiter für Fit/Titel). */
 function renderMain(){
   var J = jobs(), items = allItems();
-  var b = { act:[], run:[], neu:[], done:[] };
+  var b = { act:[], run:[], done:[] };
   items.forEach(function(it){
     var ph = (J[it.id]||{}).phase;
     if (ph==='round' || ph==='final') b.act.push(it);
-    else if (ph==='requested' || ph==='revising' || ph==='pdf-requested') b.run.push(it);
     else if (ph==='sent') b.done.push(it);
-    else b.neu.push(it);
+    else b.run.push(it);
   });
   var h = '';
   h += blockHTML('Du bist dran', b.act);
   h += blockHTML('Läuft gerade', b.run);
-  h += blockHTML('Neue Kandidaten', b.neu);
-  if (!items.length) h += '<div class="empty">Nichts da (oder Daten noch nicht geladen).</div>';
+  if (!items.length) h += '<div class="empty">Noch keine Vorgänge.<br><br>Im Dashboard unter „Bewerbungen" eine vorgemerkte Stelle mit „In der Tür öffnen" hierher schicken, dann „Paket anfordern".</div>';
   if (b.done.length){
     h += '<details><summary>Erledigt ('+b.done.length+')</summary>'+b.done.map(cardHTML).join('')+'</details>';
   }
@@ -229,16 +229,15 @@ function renderMain(){
   el(h);
 }
 function allItems(){
-  var q = queue().slice(), J = jobs(), inQ = {};
-  q.forEach(function(it){ inQ[it.id] = 1; });
-  Object.keys(J).sort(function(a,b){
+  var J = jobs();
+  return Object.keys(J).sort(function(a,b){
     return String(J[b].updated||'').localeCompare(String(J[a].updated||''));
-  }).forEach(function(k){
-    if (inQ[k]) return;
-    var j = J[k];
-    q.push({ id:k, url:j.url||k, company:j.company||'', title:j.title||('Vorgang '+k), fitScore:null, location:'' });
+  }).map(function(k){
+    var j = J[k], qi = findQueueItem(k);
+    return { id:k, url:j.url||k, company:j.company||(qi&&qi.company)||'',
+             title:j.title||(qi&&qi.title)||('Vorgang '+k),
+             fitScore:(qi&&qi.fitScore!=null)?qi.fitScore:null, location:'' };
   });
-  return q;
 }
 function blockHTML(title, arr){
   if (!arr.length) return '';
