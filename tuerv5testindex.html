@@ -54,15 +54,31 @@
          -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
          max-width:760px; margin:0 auto; min-height:100vh;
          padding:14px 12px calc(24px + env(safe-area-inset-bottom)); }
-  h1 { font:650 22px/1.2 var(--disp); letter-spacing:-.03em; margin:8px 2px 18px;
+  .dhead { display:flex; align-items:center; justify-content:space-between;
+       gap:12px; margin:10px 2px 18px; }
+  h1 { font:650 22px/1.2 var(--disp); letter-spacing:-.03em; margin:0;
        display:flex; align-items:center; gap:9px; }
+  .conn { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+       color:var(--meta); white-space:nowrap; flex:none; }
+  .conn .dot { width:7px; height:7px; border-radius:50%; background:var(--mut2); flex:none; }
+  .conn.ok { color:var(--green); }
+  .conn.ok .dot { background:var(--green2); }
+  #app.vin { animation:vin .22s cubic-bezier(.2,.7,.3,1); }
+  @keyframes vin { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
   h1::before { content:""; width:13px; height:13px; border-radius:4px; background:var(--ink); flex:none;
        box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 1px 2px rgba(20,21,19,.2); }
   h1 small { color:var(--meta); font-weight:400; font-size:12px; letter-spacing:0; }
   .card { background:var(--card); border:1px solid var(--b07);
           border-radius:16px; padding:13px 15px; margin:0 0 11px; box-shadow:var(--shadow); }
-  .card.row[onclick] { transition:box-shadow .15s ease,border-color .12s ease,transform .15s ease; }
-  .card.row[onclick]:hover { border-color:var(--b12); box-shadow:var(--shadow-h); transform:translateY(-1px); }
+  /* Tabellen-Karte (user 2026-07-11): eine weisse Karte pro Gruppe, Zeilen mit Haarlinien —
+     exakt die Listen-Sprache des Dashboards. */
+  .listcard { background:var(--card); border:1px solid var(--b07); border-radius:18px;
+          box-shadow:var(--shadow); overflow:hidden; margin:0 0 14px; }
+  .lrow { display:flex; gap:12px; align-items:center; min-width:0; padding:13px 15px;
+          cursor:pointer; transition:background .12s ease; }
+  .lrow + .lrow { border-top:1px solid rgba(12,12,10,.055); }
+  .lrow:hover { background:var(--hover); }
+  details .listcard { margin-top:10px; }
   .row { display:flex; gap:12px; align-items:center; min-width:0; }
   .grow { flex:1; min-width:0; }
   .card > b, .part h3 { font-weight:650; letter-spacing:-.01em; }
@@ -102,10 +118,12 @@
          text-align:left; margin:6px 0 0; padding:11px 13px; font-weight:400;
          background:#fff; border:1px solid var(--b12); border-radius:11px; color:var(--ink); }
   .opt:hover { border-color:var(--b18); background:var(--hover); }
-  .opt b { font:600 13px var(--mono); color:var(--meta); min-width:26px; }
+  .opt { border-radius:12px; }
+  .opt b { font:600 11.5px var(--mono); color:var(--meta); background:var(--chipbg);
+       border-radius:6px; padding:2px 7px; flex:none; align-self:flex-start; }
   .opt.sel { border-color:var(--ink); background:var(--panel); }
   .opt.sel:hover { background:var(--hover); }
-  .opt.sel b { color:var(--ink); }
+  .opt.sel b { color:#fff; background:var(--ink); }
   .opt .star { color:var(--amber); font-size:12px; }
   .part { margin:15px 0 4px; }
   .part h3 { font-size:14px; margin:0; }
@@ -125,7 +143,9 @@
   .flash.ok { color:var(--green2); } .flash.err { color:var(--red); }
   .letter p { margin:0 0 10px; font-size:14px; color:var(--ink); }
   details summary { cursor:pointer; color:var(--ink); font-size:13.5px; margin:8px 0 4px; font-weight:600;
-          text-decoration:underline; text-decoration-color:rgba(12,12,10,.25); text-underline-offset:3px; }
+          text-decoration:underline; text-decoration-color:rgba(12,12,10,.25); text-underline-offset:3px;
+          list-style:none; }
+  details summary::-webkit-details-marker { display:none; }
   details summary:hover { text-decoration-color:var(--ink); }
   .back { background:none; border:none; color:var(--ink); font-size:14px; font-weight:600;
           padding:4px 2px; margin-bottom:6px; }
@@ -134,10 +154,14 @@
   a.ext { color:var(--ink); font-size:13px; font-weight:600;
           text-decoration:underline; text-decoration-color:rgba(12,12,10,.25); text-underline-offset:3px; }
   a.ext:hover { text-decoration-color:var(--ink); }
+  @media (prefers-reduced-motion:reduce){ * { animation-duration:.001ms !important; transition-duration:.001ms !important; } }
 </style>
 </head>
 <body>
-<h1>Bewerbungs-Tür <small id="ver">v5</small></h1>
+<header class="dhead">
+  <h1>Bewerbungs-Tür <small id="ver">v5</small></h1>
+  <span class="conn" id="conn" hidden><span class="dot"></span><span id="connt"></span></span>
+</header>
 <div id="app"><div class="empty">Lade …</div></div>
 <script>
 'use strict';
@@ -183,7 +207,26 @@ function startPoll(){
 }
 
 /* ------------------------------- rendering ------------------------------ */
-function el(html){ document.getElementById('app').innerHTML = html; }
+function el(html){
+  var n = document.getElementById('app');
+  n.innerHTML = html;
+  // Ansichtswechsel-Animation (user 2026-07-11): nur bei echtem View-Wechsel, nie bei
+  // Poll-Re-Renders — sonst flackert die Seite alle 20 s.
+  if (el._lv !== S.view){
+    el._lv = S.view;
+    n.classList.remove('vin'); void n.offsetWidth; n.classList.add('vin');
+  }
+  // Verbindungsstatus im Kopf (user 2026-07-11)
+  var c = cfg(), conn = document.getElementById('conn'), ct = document.getElementById('connt');
+  if (conn && ct){
+    if (!c.url || !c.token){ conn.hidden = true; }
+    else {
+      conn.hidden = false;
+      conn.className = 'conn' + (S.state ? ' ok' : '');
+      ct.textContent = S.state ? 'Verbunden' : 'Verbinde …';
+    }
+  }
+}
 function fitCls(f){ return f>=80 ? 'fit hi' : f>=60 ? 'fit mid' : 'fit'; }
 function phaseChip(p){
   var m = { requested:['Lauf läuft …','busy'], revising:['Überarbeitung läuft …','busy'],
@@ -246,7 +289,8 @@ function renderMain(){
   h += blockHTML('Läuft gerade', b.run, 'var(--amber)');
   if (!items.length) h += '<div class="empty">Noch keine Vorgänge.<br><br>Im Dashboard unter „Bewerbungen" eine vorgemerkte Stelle mit „In der Tür öffnen" hierher schicken, dann „Paket anfordern".</div>';
   if (b.done.length){
-    h += '<details><summary>Erledigt ('+b.done.length+')</summary>'+b.done.map(cardHTML).join('')+'</details>';
+    h += '<details><summary>Erledigt ('+b.done.length+')</summary><div class="listcard">'+
+      b.done.map(cardHTML).join('')+'</div></details>';
   }
   h += '<div class="note" style="text-align:center">aktualisiert sich alle 20 s · <a class="ext" href="#" onclick="S.view=\'setup\';render();return false">Verbindung ändern</a></div>';
   el(h);
@@ -264,13 +308,16 @@ function allItems(){
 }
 function blockHTML(title, arr, col){
   if (!arr.length) return '';
+  // Tabellen-Karte statt Einzelkarten (user 2026-07-11): dieselbe Listen-Sprache wie das
+  // Dashboard — EIN weisser Block pro Gruppe, Haarlinien zwischen den Zeilen.
   return '<div class="blockhead"><span class="bdot" style="background:'+(col||'var(--green2)')+'"></span>'+
-    esc(title)+' <span class="bcnt">'+arr.length+'</span></div>'+arr.map(cardHTML).join('');
+    esc(title)+' <span class="bcnt">'+arr.length+'</span></div>'+
+    '<div class="listcard">'+arr.map(cardHTML).join('')+'</div>';
 }
 function cardHTML(it){
   var j = jobs()[it.id];
   var idq = esc(it.id).replace(/'/g,"\\'");
-  return '<div class="card row" onclick="openJobKey(\''+idq+'\')" style="cursor:pointer">'+
+  return '<div class="lrow" onclick="openJobKey(\''+idq+'\')">'+
     '<div class="'+fitCls(it.fitScore||0)+'">'+(it.fitScore!=null?it.fitScore:'–')+'</div>'+
     '<div class="grow"><b>'+esc(it.title)+'</b><div class="sub">'+esc(it.company)+
     (it.location?' · '+esc(it.location):'')+'</div></div>'+
