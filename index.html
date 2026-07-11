@@ -1,7 +1,12 @@
 <!DOCTYPE html>
-<!-- door/index.html v4 — generic GUI for the job-scout "Google door".
+<!-- door/index.html v6 — generic GUI for the job-scout "Google door".
      Hosted on GitHub Pages (public repo): contains ZERO personal data; exec
      URL + token are entered once per device and live in localStorage only.
+     v6 (user GO 2026-07-10 #2): #dcb= batch deep link — walk through ALL open
+     manual Opus-check candidates (paste -> guards -> send -> auto-advance) with
+     local 0-token paste guards (company/title match chip, cross-match with
+     one-tap reassign, session-wide duplicate hash, nav-garbage detector,
+     sent-lock + progress, undo until the next run); same guards in single #dc=.
      v4 (user GO 2026-07-10): fixed LIGHT theme mirroring the dashboard artifact
      (same palette + embedded OFL fonts Hanken/Space Grotesk, JetBrains Mono);
      only the <style> block changed, all behaviour is the v3 original.
@@ -166,7 +171,7 @@
 </head>
 <body>
 <header class="dhead">
-  <h1>Bewerbungs-Tür <small id="ver">v5</small></h1>
+  <h1>Bewerbungs-Tür <small id="ver">v6</small></h1>
   <span class="conn" id="conn" hidden><span class="dot"></span><span id="connt"></span></span>
 </header>
 <div id="app"><div class="empty">Lade …</div></div>
@@ -251,6 +256,7 @@ function flash(id, cls, msg){
 function render(){
   var c = cfg();
   if (S.view === 'setup' || !c.url || !c.token) return renderSetup();
+  if (S.view === 'dcb') return dcbView();
   if (S.view === 'dc') return dcView();
   if (S.view === 'job') return renderJob();
   return renderMain();
@@ -272,7 +278,7 @@ function setupSave(){
   if (t.length < 8) return flash('suf','err','TOKEN fehlt oder ist zu kurz.');
   localStorage.setItem(LS.url, u); localStorage.setItem(LS.token, t);
   flash('suf','ok','Teste …');
-  S.view = S.dc ? 'dc' : 'queue';
+  S.view = S.dcb ? 'dcb' : (S.dc ? 'dc' : 'queue');
   refresh().then(function(){ startPoll(); })
     .catch(function(){ flash('suf','err','Verbindung fehlgeschlagen — URL/TOKEN prüfen.'); S.view='setup'; });
 }
@@ -529,24 +535,232 @@ function takeDcHash(){
 }
 function dcView(){
   var d = S.dc || {};
-  el('<div class="card"><b>Opus-Deep-Check anfordern</b>'+
+  var h = '<div class="card"><b>Opus-Deep-Check anfordern</b>'+
     '<div class="sub" style="margin-top:4px"><b>'+esc(d.title||'')+'</b>'+(d.company?' — '+esc(d.company):'')+
     '<br>Anzeige öffnen, kompletten Anzeigentext kopieren, hier einfügen. Der nächste Scout-Lauf macht die volle Opus-Prüfung (Dossier + Fit) — das Ergebnis erscheint in der Prüfliste unter „Voll geprüft".</div>'+
     (d.url ? '<div style="margin-top:6px"><a class="ext" target="_blank" rel="noopener" href="'+esc(d.url)+'">Stellenanzeige öffnen</a></div>' : '')+
-    '<textarea id="dctext" style="min-height:200px" placeholder="Anzeigentext hier einfügen (Aufgaben, Anforderungen, Standort, Vertragsart …)"></textarea>'+
-    '<div class="actions"><button class="primary" onclick="dcSend()">An den Scout senden</button></div>'+
-    '<div id="shipf" class="flash"></div></div>');
+    '<textarea id="dctext" style="min-height:200px" placeholder="Anzeigentext hier einfügen (Aufgaben, Anforderungen, Standort, Vertragsart …)" oninput="dcInput()">'+esc(S.dcDraft||'')+'</textarea>'+
+    '<div id="dcchip" style="margin-top:6px;min-height:22px">'+matchChipHTML(S.dcDraft||'', d)+'</div>';
+  if (S.dcWarn){
+    h += '<div class="flash err" style="min-height:0">⚠ '+esc(S.dcWarn.msg)+'</div>'+
+      '<div class="actions"><button class="warn" onclick="dcSend(true)">Trotzdem senden</button>'+
+      '<button onclick="S.dcWarn=null;render()">Abbrechen</button></div>';
+  } else {
+    h += '<div class="actions"><button class="primary" onclick="dcSend(false)">An den Scout senden</button></div>';
+  }
+  el(h + '<div id="shipf" class="flash"></div></div>');
 }
-function dcSend(){
+function dcInput(){
+  var t = (document.getElementById('dctext')||{}).value || '';
+  S.dcDraft = t; S.dcWarn = null;
+  var n = document.getElementById('dcchip');
+  if (n) n.innerHTML = matchChipHTML(t, S.dc||{});
+}
+function dcSend(force){
   var t = ((document.getElementById('dctext')||{}).value || '').trim();
   if (t.length < 80) return flash('shipf','err','Das ist zu wenig Text — bitte die ganze Anzeige einfügen.');
   var d = S.dc || {};
-  var box = outbox().filter(function(x){ return !(x.action==='deepcheck' && String(x.id)===String(d.id)); });
-  box.push({ id: d.id, action: 'deepcheck', date: new Date().toISOString().slice(0,10), adText: t.slice(0, 20000) });
-  saveOutbox(box);
-  S.dc = null; S.view = 'ship';
+  if (!force){
+    var g = guardCheck(t, d, queue());
+    if (g){ S.dcWarn = g; S.dcDraft = t; return render(); }
+  }
+  shipDeepcheck(d, t);
+  S.dc = null; S.dcDraft = ''; S.dcWarn = null; S.view = 'ship';
   shipView('Sende …', '', false);
   flushOutbox(false);
+}
+
+/* ---------------- paste guards (batch + single Opus-check) — v6 ----------
+   All checks run locally in the browser (0 tokens). Asymmetric like every
+   pipeline gate: only a CONFIDENT problem warns; anything unclear sends
+   normally, and every warning has a "Trotzdem senden" override. */
+var sentHashes = {};                 // session-wide: hash of sent ad text -> label
+function normTxt(s){ return String(s==null?'':s).toLowerCase().replace(/&[a-z]+;/gi,' '); }
+var LEGAL_RE = /\b(gmbh|ag|ug|se|kg|kgaa|mbh|inc|ltd|llc|co|haftungsbeschraenkt|haftungsbeschränkt|group|gruppe|holding|international)\b/g;
+function coTokens(company){
+  return normTxt(company).replace(/\(.*?\)/g,' ').replace(LEGAL_RE,' ')
+    .split(/[^a-z0-9äöüß]+/).filter(function(t){ return t.length>=3; });
+}
+function titleTokens(title){
+  return normTxt(title).split(/[^a-z0-9äöüß]+/).filter(function(t){ return t.length>=5; });
+}
+function matchInfo(text, item){
+  var t = normTxt(text);
+  var co = coTokens((item&&item.company)||'');
+  var coFull = co.length>0 && co.every(function(k){ return t.indexOf(k)>=0; });
+  var coAny  = co.some(function(k){ return t.indexOf(k)>=0; });
+  var ti = titleTokens((item&&item.title)||'');
+  var tiHits = ti.filter(function(k){ return t.indexOf(k)>=0; }).length;
+  return { coFull:coFull, coAny:coAny, tiHits:tiHits,
+           ok: coFull || (coAny && tiHits>=1) || tiHits>=2 };
+}
+function crossSuspect(text, item, others){
+  // another candidate whose FULL company name appears while the current one doesn't
+  if (matchInfo(text, item).coAny) return null;
+  for (var i=0;i<(others||[]).length;i++){
+    var o = others[i];
+    if (!o || String(o.id)===String(item.id)) continue;
+    if (matchInfo(text, o).coFull) return o;
+  }
+  return null;
+}
+var NAV_WORDS = ['cookie','impressum','datenschutz','anmelden','login','registrieren',
+  'newsletter','akzeptieren','ablehnen','einstellungen','navigation','startseite','warenkorb','agb'];
+function looksLikeChrome(text){
+  var t = normTxt(text);
+  return NAV_WORDS.filter(function(w){ return t.indexOf(w)>=0; }).length >= 4;
+}
+function txtHash(s){
+  var t = normTxt(s).replace(/\s+/g,' ').trim(), h = 5381;
+  for (var i=0;i<t.length;i++) h = ((h<<5)+h+t.charCodeAt(i))|0;
+  return String(h);
+}
+function guardCheck(text, item, others){
+  // null = send; otherwise {kind, msg, suspect?}
+  var h = txtHash(text);
+  if (sentHashes[h]) return { kind:'dup',
+    msg:'Das ist derselbe Text wie eben bei „'+sentHashes[h]+'" — hast du die neue Anzeige kopiert?' };
+  var m = matchInfo(text, item);
+  if (looksLikeChrome(text) && !m.ok) return { kind:'chrome',
+    msg:'Das sieht nach Webseiten-Gerüst aus (Cookie-/Menü-Texte), nicht nach der Anzeige.' };
+  if (!m.ok){
+    var sus = crossSuspect(text, item, others);
+    if (sus) return { kind:'cross', suspect:sus,
+      msg:'Der Text sieht nach „'+(sus.company||'?')+'" aus — du bist aber bei „'+(item.company||'?')+'".' };
+    return { kind:'nomatch',
+      msg:'Der Text erwähnt weder „'+(item.company||'?')+'" noch Wörter aus dem Stellentitel.' };
+  }
+  return null;
+}
+function matchChipHTML(text, item){
+  if (!text || text.length < 40) return '';
+  var m = matchInfo(text, item);
+  return (m.coFull || m.coAny)
+    ? '<span class="chip live">✓ '+esc((item&&item.company)||'')+' im Text erkannt</span>'
+    : m.ok ? '<span class="chip live">✓ Titelwörter im Text erkannt</span>'
+    : '<span class="chip busy">⚠ Firma/Titel nicht im Text gefunden</span>';
+}
+function shipDeepcheck(it, text){
+  // same outbox pipeline as v3 single mode: dedup per id, park, remember hash
+  // (caller decides when to flushOutbox — batch flushes silently, single via ship view)
+  var box = outbox().filter(function(x){ return !(x.action==='deepcheck' && String(x.id)===String(it.id) && !x.undo); });
+  box.push({ id: it.id, action:'deepcheck', date:new Date().toISOString().slice(0,10), adText:String(text).slice(0,20000) });
+  saveOutbox(box);
+  sentHashes[txtHash(text)] = it.company || it.title || String(it.id);
+}
+function undoDeepcheck(it){
+  // still local -> drop it; already shipped -> send an undo (door removes the pending twin)
+  var box = outbox(), before = box.length;
+  box = box.filter(function(x){ return !(x.action==='deepcheck' && String(x.id)===String(it.id) && !x.undo); });
+  if (box.length !== before){ saveOutbox(box); }
+  else {
+    box.push({ id: it.id, action:'deepcheck', date:new Date().toISOString().slice(0,10), undo:true });
+    saveOutbox(box); flushOutbox(false);
+  }
+  var label = it.company || it.title || String(it.id);
+  Object.keys(sentHashes).forEach(function(k){ if (sentHashes[k]===label) delete sentHashes[k]; });
+}
+
+/* ---------------- batch Opus-check deep link (#dcb=) — v6 ------------------
+   The dashboard ships the WHOLE list of open manual-check candidates; this
+   view walks through them: paste -> guards -> send -> auto-advance. Every
+   send stays individually bound to its posting id. */
+function takeDcbHash(){
+  var m = /#dcb=([^&]+)/.exec(location.hash || '');
+  if (!m) return false;
+  history.replaceState(null, '', location.pathname + location.search);
+  try {
+    var list = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
+    if (Array.isArray(list)){
+      var items = list.filter(function(x){ return x && x.id; });
+      if (items.length){ S.dcb = { items:items, idx:0, sent:{}, lastSent:null, warn:null, draft:'' }; return true; }
+    }
+  } catch(e){ /* malformed -> ignore */ }
+  return false;
+}
+function dcbAdvance(){
+  var B = S.dcb, n = B.items.length;
+  for (var i=1;i<=n;i++){
+    var j = (B.idx+i)%n;
+    if (!B.sent[B.items[j].id]){ B.idx=j; return true; }
+  }
+  return false;   // everything sent
+}
+function dcbView(){
+  var B = S.dcb;
+  if (!B || !B.items.length){ S.view='queue'; return render(); }
+  var sentCount = Object.keys(B.sent).length;
+  if (sentCount >= B.items.length) return dcbDoneView();
+  var it = B.items[B.idx];
+  var h = '<button class="back" onclick="dcbQuit()">← Batch beenden</button>';
+  h += '<div class="card"><div class="sub">Opus-Check-Batch · Stelle '+(B.idx+1)+' von '+B.items.length+' · '+sentCount+' gesendet</div>'+
+    '<div class="row" style="margin-top:8px">'+
+    (it.fit!=null?'<div class="'+fitCls(it.fit)+'">'+it.fit+'</div>':'')+
+    '<div class="grow"><b>'+esc(it.title||'')+'</b><div class="sub">'+esc(it.company||'')+'</div></div></div>'+
+    '<div class="actions">'+
+    (it.url?'<a class="btn" target="_blank" rel="noopener" href="'+esc(it.url)+'">Anzeige öffnen</a>':'')+
+    '<button onclick="dcbSkip()">Überspringen →</button></div></div>';
+  h += '<div class="card"><b>Anzeigentext für „'+esc(it.company||'')+'"</b>'+
+    '<textarea id="dcbtext" style="min-height:180px" placeholder="Kompletten Anzeigentext hier einfügen (Aufgaben, Anforderungen, Standort, Vertragsart …)" oninput="dcbInput()">'+esc(B.draft||'')+'</textarea>'+
+    '<div id="dcbchip" style="margin-top:6px;min-height:22px">'+matchChipHTML(B.draft||'', it)+'</div>';
+  if (B.warn){
+    h += '<div class="flash err" style="min-height:0">⚠ '+esc(B.warn.msg)+'</div>'+
+      '<div class="actions">'+
+      (B.warn.kind==='cross' && B.warn.suspect
+        ? '<button class="primary" onclick="dcbSwitch(\''+esc(String(B.warn.suspect.id)).replace(/'/g,"\\'")+'\')">Zur Stelle „'+esc(B.warn.suspect.company||'?')+'" wechseln</button>' : '')+
+      '<button class="warn" onclick="dcbSend(true)">Trotzdem senden</button>'+
+      '<button onclick="S.dcb.warn=null;render()">Abbrechen</button></div>';
+  } else {
+    h += '<div class="actions"><button class="primary" onclick="dcbSend(false)">An den Scout senden</button></div>';
+  }
+  h += '<div id="dcbf" class="flash"></div></div>';
+  if (B.lastSent){
+    h += '<div class="card"><div class="sub">Zuletzt gesendet: <b>'+esc(B.lastSent.company||'')+'</b> ✓</div>'+
+      '<div class="actions"><button onclick="dcbUndo()">✗ Rückgängig (bis zum nächsten Lauf)</button></div></div>';
+  }
+  el(h);
+}
+function dcbDoneView(){
+  var B = S.dcb;
+  el('<div class="card"><b>✓ Batch fertig</b><div class="sub" style="margin-top:4px">'+
+     Object.keys(B.sent).length+' Anzeigentext(e) an den Scout übergeben — der nächste Lauf macht die vollen Opus-Checks; die Ergebnisse erscheinen in der Prüfliste unter „Voll geprüft".</div>'+
+     '<div class="actions">'+
+     (B.lastSent?'<button onclick="dcbUndo()">✗ Letzte Sendung rückgängig</button>':'')+
+     '<button class="primary" onclick="dcbQuit()">Zur Tür</button></div></div>');
+}
+function dcbInput(){
+  var B = S.dcb, t = (document.getElementById('dcbtext')||{}).value||'';
+  B.draft = t; B.warn = null;
+  var n = document.getElementById('dcbchip');
+  if (n) n.innerHTML = matchChipHTML(t, B.items[B.idx]);
+}
+function dcbSkip(){ S.dcb.draft=''; S.dcb.warn=null; dcbAdvance(); render(); }
+function dcbSwitch(id){
+  var B = S.dcb;
+  for (var i=0;i<B.items.length;i++) if (String(B.items[i].id)===String(id)){ B.idx=i; break; }
+  B.warn = null; render();
+}
+function dcbQuit(){ S.dcb = null; S.view='queue'; render(); refresh(); }
+function dcbSend(force){
+  var B = S.dcb, it = B.items[B.idx];
+  var t = ((document.getElementById('dcbtext')||{}).value||'').trim();
+  if (t.length < 80) return flash('dcbf','err','Das ist zu wenig Text — bitte die ganze Anzeige einfügen.');
+  if (!force){
+    var g = guardCheck(t, it, B.items);
+    if (g){ B.warn = g; B.draft = t; return render(); }
+  }
+  shipDeepcheck(it, t);
+  flushOutbox(false);
+  B.sent[it.id] = true; B.lastSent = it; B.draft=''; B.warn=null;
+  dcbAdvance(); render();
+}
+function dcbUndo(){
+  var B = S.dcb, it = B.lastSent;
+  if (!it) return;
+  undoDeepcheck(it);
+  delete B.sent[it.id];
+  for (var i=0;i<B.items.length;i++) if (String(B.items[i].id)===String(it.id)){ B.idx=i; break; }
+  B.lastSent = null; B.draft=''; render();
 }
 
 /* ------------------------ dashboard deep link (#req=) ------------------- */
@@ -569,8 +783,15 @@ function handleHash(){
 /* --------------------------------- boot ---------------------------------- */
 (function(){
   var shipped = takeActsHash();          // persist a mark batch FIRST (works even offline)
+  var wantDcb = takeDcbHash();           // batch Opus-check walkthrough (v6)
   var wantDc = takeDcHash();             // manual deep-check form (v3)
   var c = cfg();
+  if (wantDcb){
+    if (!c.url || !c.token){ S.view = 'setup'; render(); return; }
+    S.view = 'dcb'; dcbView();
+    if (outbox().length) flushOutbox(false);   // ältere geparkte Pakete still mitsenden
+    return;
+  }
   if (wantDc){
     if (!c.url || !c.token){ S.view = 'setup'; render(); return; }
     S.view = 'dc'; dcView();
