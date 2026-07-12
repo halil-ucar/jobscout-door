@@ -3355,6 +3355,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   document.addEventListener("click", function(e){
     var nav = e.target.closest("[data-nav]");
     if (nav){
+      // Seitenwechsel schließt eine offene Portal-Untersicht (Vorgang/Opus-Check) —
+      // sonst überdeckte sie die Zielseite und "nichts passierte" (user 2026-07-12).
+      P.view = null; P.dc = null; P.dcb = null; P.dcWarn = null; P.flash = "";
       state.view = nav.getAttribute("data-nav"); renderAll();
       // Ansichtswechsel-Animation nur bei echter Navigation (nie bei Mark-Re-Renders)
       var vv = document.querySelector(".view"); if (vv) vv.classList.add("vin");
