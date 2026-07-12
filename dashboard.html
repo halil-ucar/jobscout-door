@@ -2381,7 +2381,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // als Balken vom Versanddatum bis heute, erledigte stehen als Punkt am Versanddatum,
     // die Kerbe markiert Tag 14. Dazu der Trichter Versandt -> Rueckmeldung -> Gespraech ->
     // Zusage. Alles deterministisch aus dem PII-freien Extrakt, kein LLM, keine Bibliothek.
-    var h = '<div class="stq-head" style="margin-top:6px">Bewerbungsstatus <span class="c">'+rows.length+"</span></div>";
+    // Kein eigener Abschnittskopf mehr: einziger Aufrufer ist die Seite "Status" —
+    // ein zweiter Titel "Bewerbungsstatus" direkt unter dem Seitentitel war
+    // Doppel-Info (Optik-Runde 2026-07-12, user GO; die Anzahl trägt der Tab-Zähler).
+    var h = "";
     var stats = [
       { n: c.over,          cls: "warn", lbl: "nachfassen" },
       { n: c.wart - c.over, cls: "",     lbl: (c.wart-c.over)===1 ? "wartet" : "warten" },
