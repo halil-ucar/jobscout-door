@@ -2616,6 +2616,45 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     renderAll();
   }
   function pFlashHTML(){ return '<div class="aps-legend" id="pflash" style="min-height:16px">'+esc(P.flash||"")+"</div>"; }
+  /* Systemteile (user GO 2026-07-16): GUI-lokale Teile, die NIE aus der Modell-Runde
+     kommen (Teilnummern 8/9 im Kontrakt reserviert). Teil 9 = Verpackungs-Preset
+     (Ordnerinhalt Bewerben/<Firma>/), Teil 8 = Gehaltssatz (Standard AUS — nur ein
+     explizites 8B fügt ihn ein). Beide wandern als Codes im selben `pdf …`-Einzeiler
+     mit; der deterministische Bau setzt sie um (letter_webhook_script SYSTEM_PARTS). */
+  var P_SYS_PARTS = [
+    { num:"9", name:"Unterlagen-Paket", def:"9A", options:[
+      { code:"9A", text:"Alle Dateien einzeln",
+        why:"Ordner: Anschreiben + Lebenslauf + Zeugnisse als 3 PDFs" },
+      { code:"9B", text:"Anschreiben + Lebenslauf zusammengefügt",
+        why:"Ordner: Anschreiben_Lebenslauf (eine Datei) + Zeugnisse separat" },
+      { code:"9C", text:"Alles in einer Datei",
+        why:"Ordner: nur Bewerbungsunterlagen.pdf — Anschreiben + Lebenslauf + Zeugnisse" }]},
+    { num:"8", name:"Gehaltsvorstellung", def:"8A", options:[
+      { code:"8A", text:"Ohne Gehaltsangabe", why:"Standard — kein Gehaltssatz im Brief" },
+      { code:"8B", text:"Mit Gehaltssatz",
+        why:"fügt den kanonischen Gehaltssatz (aus deinem Drive-Regelwerk) nach Absatz 4 ein" }]}
+  ];
+  function pSysPartsHTML(j, dis){
+    var restore = {};
+    (j && j.codes || []).forEach(function(c){
+      c = String(c).toUpperCase();
+      if (/^[89][A-E]$/.test(c)) restore[c.charAt(0)] = c;
+    });
+    var h = "";
+    P_SYS_PARTS.forEach(function(sp){
+      if (!(sp.num in P.sel)) P.sel[sp.num] = restore[sp.num] || sp.def;
+      h += '<div class="stpart"><div class="stpart-h"><span class="stpart-num">'+esc(sp.num)+"</span>"+esc(sp.name)+"</div>";
+      sp.options.forEach(function(o){
+        var on = P.sel[sp.num]===o.code, std = o.code===sp.def;
+        h += '<button class="stopt click'+(on?" sel":"")+'" data-popt=\''+esc(JSON.stringify({p:sp.num, c:o.code}))+'\'>'+
+          '<span class="stopt-code">'+esc(o.code)+"</span><span>"+esc(o.text)+(std?" ★":"")+
+          (on?' <span class="stchip req">gewählt</span>':"")+
+          '<span class="c" style="display:block;margin-top:2px">'+esc(o.why)+"</span></span></button>";
+      });
+      h += "</div>";
+    });
+    return h;
+  }
   function portalJobHTML(){
     var id = P.jobId, j = pJobs()[id], it = pQueueItem(id);
     var company = (j&&j.company)||(it&&it.company)||"", title = (j&&j.title)||(it&&it.title)||"";
@@ -2669,9 +2708,13 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         });
         h += "</div>";
       });
+      /* Systemteile 9 (Verpackung) + 8 (Gehalt, Standard aus) — GUI-lokal, wandern
+         nur im `pdf …`-Einzeiler mit (die Modell-Runde kennt sie nicht) */
+      h += pSysPartsHTML(j, dis);
       /* Auswahl + PDF in EINEM deterministischen Skript-Lauf (kein Modell, ~1 Min.) —
-         `pdf 1B 2C` wird vom Routing-Schalter exakt geparst; die Text-Runde bleibt
-         als Vorschau-Weg. Variante b kommt nur per Tap in einen Brief (a-Default). */
+         `pdf 1B 2C 9A 8A` wird vom Routing-Schalter exakt geparst; die Text-Runde
+         bleibt als Vorschau-Weg. Variante b kommt nur per Tap in einen Brief
+         (a-Default), der Gehaltssatz nur per explizitem 8B. */
       h += '<div class="stactions"><button class="stbtn primary" data-pcmd="codespdf"'+dis+'>Auswahl übernehmen + PDF bauen (~1 Min.)</button>'+
         '<button class="stbtn" data-pcmd="codes"'+dis+'>Nur Text-Runde (~3 Min.)</button></div>';
     }
@@ -2687,13 +2730,18 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         String(j.letterText).split(/\n{2,}/).map(function(pp){ return "<p>"+esc(pp)+"</p>"; }).join("")+"</div>";
     }
     var pdfUrl = j.pdfUrl || (P.state && P.state.settings && P.state.settings.pdfFileUrl) || "";
+    /* Ablage-Status (2026-07-16): Warnung der Tür sichtbar machen (Archiv fehlgeschlagen,
+       Unterlage fehlt, Papierkorb verweigert) — nie stiller Teilausfall */
+    if (j.filingWarn)
+      h += '<div class="stwhy" style="color:#b45309">'+esc(j.filingWarn)+"</div>";
     h += '<div class="stq-head">Feinschliff</div>'+
       '<textarea id="pfeed" class="stfeed" placeholder="Freitext-Wunsch (z. B. „Absatz 4 kürzer") — startet eine Text-Runde (~3 Min.)"></textarea>'+
       '<div class="stactions"><button class="stbtn" data-pcmd="feed"'+dis+'>Feinschliff senden</button>'+
       '<button class="stbtn" data-pcmd="pdf"'+(dis || (j.phase==="sent"?" disabled":""))+'>PDF erneut bauen (letzter Stand)</button>'+
       (j.phase==="final" && pdfUrl ? '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(pdfUrl)+'">PDF in Drive öffnen</a>' : "")+
+      (j.folderUrl && j.phase!=="sent" ? '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(j.folderUrl)+'">📁 Bewerbungsordner</a>' : "")+
       '<button class="stbtn warn" data-pcmd="versandt"'+(dis || (j.phase==="sent"?" disabled":""))+'>Versandt</button></div>'+
-      '<div class="aps-legend">„Versandt" bucht die Bewerbung (Scout + Bewerbungslog) und schließt den Vorgang.</div>';
+      '<div class="aps-legend">„Versandt" bucht die Bewerbung (Scout + Bewerbungslog), schließt den Vorgang und räumt den Bewerbungsordner in den Papierkorb (Archivkopie in „Alle" bleibt immer).</div>';
     return h + pFlashHTML() + "</div>";
   }
   function pComment(text, okMsg){
@@ -2722,6 +2770,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       });
       if (!codes.length){ P.flash = "Keine Option gewählt."; return renderAll(); }
       if (cmd === "codespdf"){
+        /* Systemteile IMMER explizit mitsenden (auch 9A/8A): ein früherer 8B/9C-Bau
+           bleibt sonst im Bundle kleben — der explizite Code schaltet sauber zurück */
+        P_SYS_PARTS.forEach(function(sp){ codes.push(P.sel[sp.num] || sp.def); });
         if (confirm("Auswahl übernehmen und finales PDF bauen? (deterministisch, ~1 Min.)"))
           pComment("pdf "+codes.join(" "), "PDF-Bau mit deiner Auswahl läuft (~1 Min.).");
         return;
