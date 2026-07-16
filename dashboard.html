@@ -2642,16 +2642,29 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         return '<div class="dl"><span class="dash">—</span><span>'+esc(a)+"</span></div>"; }).join("");
     }
     if (j.round && j.round.parts && j.round.parts.length){
-      h += '<div class="stq-head">Optionsrunde <span class="c">★ = Empfehlung, vorbelegt</span></div>';
+      h += '<div class="stq-head">Optionsrunde <span class="c">★ = Empfehlung · Rahmen = ausgewählt</span></div>';
       j.round.parts.forEach(function(pt){
         var pn = String(pt.num);
         if (!(pn in P.sel)) P.sel[pn] = pt.selected || pt.recommendation || "";
         h += '<div class="stpart"><div class="stpart-h"><span class="stpart-num">'+esc(pn)+"</span>"+esc(pt.name||"")+"</div>"+
           (pt.why ? '<div class="stwhy">'+esc(pt.why)+"</div>" : "");
+        /* a-Default macht Empfehlung ≠ Auswahl zum Normalfall (b-Empfehlung) —
+           ohne Hinweis sähe das wie ein Bug aus, also amber erklären */
+        if (pt.recommendation && P.sel[pn] && pt.recommendation !== P.sel[pn])
+          h += '<div class="stwhy" style="color:#b45309">⚠ Empfehlung ist '+esc(pt.recommendation)+
+               ', ausgewählt ist '+esc(P.sel[pn])+' — Begründungen lesen, Tap wechselt.</div>';
         (pt.options||[]).forEach(function(o){
           var on = P.sel[pn]===o.code, rec = o.code===pt.recommendation;
+          /* Teil-1-Optionstexte = zwei Brückensätze, getrennt mit " / " (gepinnter
+             Kontrakt) — als zwei beschriftete Zeilen statt Textklotz rendern */
+          var seg = String(o.text||"").split(/\s+\/\s+/);
+          var body = seg.length === 2
+            ? '<span style="display:block"><span class="c">Absatz 1 · </span>'+esc(seg[0])+"</span>"+
+              '<span style="display:block;margin-top:2px"><span class="c">Schluss · </span>'+esc(seg[1])+"</span>"
+            : esc(o.text);
           h += '<button class="stopt click'+(on?" sel":"")+'" data-popt=\''+esc(JSON.stringify({p:pn, c:o.code}))+'\'>'+
-            '<span class="stopt-code">'+esc(o.code)+"</span><span>"+esc(o.text)+(rec?" ★":"")+
+            '<span class="stopt-code">'+esc(o.code)+"</span><span>"+body+(rec?" ★":"")+
+            (on?' <span class="stchip req">gewählt</span>':"")+
             (o.why?'<span class="c" style="display:block;margin-top:2px">'+esc(o.why)+"</span>":"")+"</span></button>";
         });
         h += "</div>";
@@ -2663,13 +2676,20 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<button class="stbtn" data-pcmd="codes"'+dis+'>Nur Text-Runde (~3 Min.)</button></div>';
     }
     if (j.letterText){
-      h += '<div class="stq-head">Aktueller Brief</div><div class="stletter">'+
+      /* Adresskopf (verifizierter Empfänger + Ort/Datum aus dem Push, seit 2026-07-16) —
+         die Adresskontrolle passiert dort, wo der Brief gelesen wird; ohne Felder
+         (alte Vorgänge / alte door.gs-Version) entfällt der Kopf einfach */
+      var lhead = "";
+      if (j.recipient && j.recipient.length)
+        lhead += '<p class="c" style="margin-bottom:2px">'+j.recipient.map(esc).join("<br>")+"</p>";
+      if (j.cityDate) lhead += '<p class="c" style="text-align:right">'+esc(j.cityDate)+"</p>";
+      h += '<div class="stq-head">Aktueller Brief</div><div class="stletter">'+lhead+
         String(j.letterText).split(/\n{2,}/).map(function(pp){ return "<p>"+esc(pp)+"</p>"; }).join("")+"</div>";
     }
     var pdfUrl = j.pdfUrl || (P.state && P.state.settings && P.state.settings.pdfFileUrl) || "";
     h += '<div class="stq-head">Feinschliff</div>'+
       '<textarea id="pfeed" class="stfeed" placeholder="Freitext-Wunsch (z. B. „Absatz 4 kürzer") — startet eine Text-Runde (~3 Min.)"></textarea>'+
-      '<div class="stactions"><button class="stbtn" data-pcmd="feed"'+dis+'>Senden</button>'+
+      '<div class="stactions"><button class="stbtn" data-pcmd="feed"'+dis+'>Feinschliff senden</button>'+
       '<button class="stbtn" data-pcmd="pdf"'+(dis || (j.phase==="sent"?" disabled":""))+'>PDF erneut bauen (letzter Stand)</button>'+
       (j.phase==="final" && pdfUrl ? '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(pdfUrl)+'">PDF in Drive öffnen</a>' : "")+
       '<button class="stbtn warn" data-pcmd="versandt"'+(dis || (j.phase==="sent"?" disabled":""))+'>Versandt</button></div>'+
