@@ -2651,11 +2651,16 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         (pt.options||[]).forEach(function(o){
           var on = P.sel[pn]===o.code, rec = o.code===pt.recommendation;
           h += '<button class="stopt click'+(on?" sel":"")+'" data-popt=\''+esc(JSON.stringify({p:pn, c:o.code}))+'\'>'+
-            '<span class="stopt-code">'+esc(o.code)+"</span><span>"+esc(o.text)+(rec?" ★":"")+"</span></button>";
+            '<span class="stopt-code">'+esc(o.code)+"</span><span>"+esc(o.text)+(rec?" ★":"")+
+            (o.why?'<span class="c" style="display:block;margin-top:2px">'+esc(o.why)+"</span>":"")+"</span></button>";
         });
         h += "</div>";
       });
-      h += '<div class="stactions"><button class="stbtn primary" data-pcmd="codes"'+dis+'>Auswahl senden (~3 Min.)</button></div>';
+      /* Auswahl + PDF in EINEM deterministischen Skript-Lauf (kein Modell, ~1 Min.) —
+         `pdf 1B 2C` wird vom Routing-Schalter exakt geparst; die Text-Runde bleibt
+         als Vorschau-Weg. Variante b kommt nur per Tap in einen Brief (a-Default). */
+      h += '<div class="stactions"><button class="stbtn primary" data-pcmd="codespdf"'+dis+'>Auswahl übernehmen + PDF bauen (~1 Min.)</button>'+
+        '<button class="stbtn" data-pcmd="codes"'+dis+'>Nur Text-Runde (~3 Min.)</button></div>';
     }
     if (j.letterText){
       h += '<div class="stq-head">Aktueller Brief</div><div class="stletter">'+
@@ -2665,7 +2670,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     h += '<div class="stq-head">Feinschliff</div>'+
       '<textarea id="pfeed" class="stfeed" placeholder="Freitext-Wunsch (z. B. „Absatz 4 kürzer") — startet eine Text-Runde (~3 Min.)"></textarea>'+
       '<div class="stactions"><button class="stbtn" data-pcmd="feed"'+dis+'>Senden</button>'+
-      '<button class="stbtn" data-pcmd="pdf"'+(dis || (j.phase==="sent"?" disabled":""))+'>PDF final bauen</button>'+
+      '<button class="stbtn" data-pcmd="pdf"'+(dis || (j.phase==="sent"?" disabled":""))+'>PDF erneut bauen (letzter Stand)</button>'+
       (j.phase==="final" && pdfUrl ? '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(pdfUrl)+'">PDF in Drive öffnen</a>' : "")+
       '<button class="stbtn warn" data-pcmd="versandt"'+(dis || (j.phase==="sent"?" disabled":""))+'>Versandt</button></div>'+
       '<div class="aps-legend">„Versandt" bucht die Bewerbung (Scout + Bewerbungslog) und schließt den Vorgang.</div>';
@@ -2687,12 +2692,20 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         .catch(function(e){ P.sending = false; P.flash = "Fehler: "+e.message; renderAll(); });
       return;
     }
-    if (cmd === "codes"){
+    if (cmd === "codes" || cmd === "codespdf"){
       var codes = [];
       ((j.round && j.round.parts)||[]).forEach(function(pt){
-        var c = P.sel[String(pt.num)]; if (c) codes.push(c);
+        var c = P.sel[String(pt.num)]; if (!c) return;
+        c = String(c).toUpperCase();
+        if (!/^\d/.test(c)) c = String(pt.num)+c;   // Vollcode-Kontrakt ("1A") defensiv erzwingen
+        codes.push(c);
       });
       if (!codes.length){ P.flash = "Keine Option gewählt."; return renderAll(); }
+      if (cmd === "codespdf"){
+        if (confirm("Auswahl übernehmen und finales PDF bauen? (deterministisch, ~1 Min.)"))
+          pComment("pdf "+codes.join(" "), "PDF-Bau mit deiner Auswahl läuft (~1 Min.).");
+        return;
+      }
       return pComment(codes.join(" "), "Runde gestartet — Ergebnis erscheint hier (~3 Min.).");
     }
     if (cmd === "feed"){
@@ -2701,7 +2714,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       return pComment(t, "Runde gestartet — Ergebnis erscheint hier (~3 Min.).");
     }
     if (cmd === "pdf"){
-      if (confirm("Finales PDF jetzt deterministisch bauen?")) pComment("pdf", "PDF-Bau läuft (~1–1,5 Min.).");
+      if (confirm("PDF vom letzten Stand deterministisch bauen? (Eine neue Auswahl vorher oben übernehmen.)"))
+        pComment("pdf", "PDF-Bau läuft (~1–1,5 Min.).");
       return;
     }
     if (cmd === "versandt"){
