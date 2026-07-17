@@ -3041,12 +3041,23 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (DOOR_DASH){
       // Bewerbungs-Portal (user GO 2026-07-11 #2): die Tür-GUI lebt jetzt HIER — kein
       // Tür-Knopf mehr; Briefe/Vorgänge direkt auf dieser Seite.
+      // Vorgemerkt zeigt nur Stellen OHNE laufenden Brief-Vorgang (user GO 2026-07-17):
+      // sobald ein Paket angefordert ist, lebt die Karte unten in „Briefe" — doppelt
+      // wäre Lärm. Reine Anzeige; die Vormerkung selbst bleibt gespeichert.
+      var pj = pJobs(), pBusyIds = {};
+      Object.keys(pj).forEach(function(k){
+        pBusyIds[k] = 1;
+        var qi = pQueueItem(k);
+        if (qi && qi.url) pBusyIds[qi.url] = 1;   // Vorgangs-Schlüssel ≠ URL abdecken
+      });
+      bew = bew.filter(function(it){ return !(pBusyIds[it.url] || pBusyIds[it.id]); });
+      var vmHead2 = '<div class="stq-head">Vorgemerkt <span class="c">'+bew.length+"</span></div>";
       // Optik 2026-07-17: leeres Vorgemerkt nicht als große Box ÜBER den Briefen —
       // dann rücken die Briefe nach oben und Vorgemerkt wird eine stille Zeile darunter.
       if (bew.length)
-        html += vmHead + bew.map(function(it){ return mcardHTML(it,"bewerben"); }).join("") + portalSectionHTML();
+        html += vmHead2 + bew.map(function(it){ return mcardHTML(it,"bewerben"); }).join("") + portalSectionHTML();
       else
-        html += portalSectionHTML() + vmHead +
+        html += portalSectionHTML() + vmHead2 +
           '<div class="aps-legend">Nichts vorgemerkt — „Bewerben" in Start oder Prüfen.</div>';
     } else if (doorGui()){
       html += vmHead;
