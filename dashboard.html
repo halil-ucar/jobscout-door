@@ -556,6 +556,12 @@ a{color:inherit;text-decoration:none}
 .btn-act.a2:hover{border-color:var(--ink)}
 .btn-act.a3{color:var(--meta);background:transparent;border:1px solid transparent}
 .btn-act.a3:hover{color:var(--red);background:var(--red-bg)}
+/* „Offline"-Endmarke (nur im „Ohne Live-Beweis"-Filter): absolut rechts in der Aktionszeile
+   verankert — sitzt dadurch auf JEDER Karte an derselben Stelle und Höhe, egal ob ein
+   Opus-Check-Knopf da ist oder die übrigen Knöpfe umbrechen (user GO 2026-07-18). */
+.pacts-row.hasoff{position:relative;padding-right:88px}
+.btn-act.aoff{position:absolute;right:0;top:0;color:var(--meta);background:transparent;border:1px solid var(--b12)}
+.btn-act.aoff:hover{color:var(--red);border-color:var(--red);background:var(--red-bg)}
 .checkchip{margin-top:9px;font-size:12.5px;font-weight:600;color:var(--ink);background:var(--chipbg);
   border-radius:6px;padding:5px 9px;display:inline-block}
 
@@ -881,6 +887,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (s.indexOf("closed-dead")===0) return "Offline";
     if (s==="closed-user-checked") return "Von dir geprüft";
     if (s==="closed-user-applied") return "Beworben";
+    if (s==="closed-user-offline") return "Offline (von dir)";
     if (s.indexOf("closed")===0) return "Offline";
     if (s.indexOf("werkstudent")>=0) return "Werkstudent";
     if (s.indexOf("praktikum")>=0 || s.indexOf("intern")>=0) return "Praktikum";
@@ -1236,7 +1243,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       inhCache = [];
       state.items.forEach(function(x){
         var m = state.marks[x.id];
-        if (m) inhCache.push({ co: coCanon(x.company), ti: dnorm(x.title).split(" ").filter(Boolean), mark: m.mark });
+        // "offline" gilt nur der KONKRETEN Anzeige (diese URL ist tot) — nie kanonisch auf
+        // Zwillingsrollen vererben; ein Repost darf die Rolle später regulär reaktivieren.
+        if (m && m.mark!=="offline") inhCache.push({ co: coCanon(x.company), ti: dnorm(x.title).split(" ").filter(Boolean), mark: m.mark });
       });
     }
     var co = coCanon(it.company), ti = dnorm(it.title).split(" ").filter(Boolean);
@@ -1299,7 +1308,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      window.open zur GUI ist der eine erlaubte Kanal; die GUI persistiert das Paket sofort in
      ihrer eigenen Outbox und sendet mit Retry, der Tab schließt sich von selbst. Ohne
      konfigurierte Google-Tür ändert sich nichts (Export-Leiste bleibt der Weg). */
-  var DOOR_VERBS = { beworben:"applied", verworfen:"dismissed", geprueft:"checked" };
+  var DOOR_VERBS = { beworben:"applied", verworfen:"dismissed", geprueft:"checked", offline:"offline" };
   /* Sandbox-Fallback (2026-07-10): die claude.ai-Artefakt-Sandbox verschluckt window.open
      LAUTLOS (derselbe Handler läuft in normalem Chromium — gemessen). Fehlgeschlagene
      Sendungen parken deshalb in einer Dashboard-Outbox; die Export-Leiste zeigt dann einen
@@ -1822,12 +1831,16 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<div class="s">'+esc(it.metaLine)+"</div>"+mainClose(it)+"</div>"+
       (why ? '<div class="whyrow" title="Grund, warum diese Stelle (noch) kein Treffer ist">'+why+"</div>" : "")+
       alwBox+
-      '<div class="pacts-row">'+
+      // „Offline"-Endmarke (user GO 2026-07-18): nur bei aktivem „Ohne Live-Beweis"-Filter,
+      // auf jeder gezeigten Karte rechts in der Aktionszeile (CSS .aoff = absolut verankert,
+      // selbe Position/Höhe überall). Verbucht als closed-user-offline; Rückholweg im Archiv.
+      '<div class="pacts-row'+(state.noLive?" hasoff":"")+'">'+
         '<button class="btn-act a1" data-mark="bewerben" data-id="'+esc(it.id)+'">Bewerben</button>'+
         '<button class="btn-act a3" data-mark="verworfen" data-id="'+esc(it.id)+'">Verwerfen</button>'+
         '<button class="btn-g" data-details="'+esc(it.id)+'">Details</button>'+
         dcBtn+
         (chipTxt ? '<span class="checkchip" style="margin-top:0">Markiert: '+chipTxt+"</span>" : "")+
+        (state.noLive ? '<button class="btn-act aoff" data-mark="offline" data-id="'+esc(it.id)+'">Offline</button>' : "")+
       "</div>"+
       (open ? deepPanelHTML(it)+
         // Zweitaktion nur in der Ausklappe (Karten-Entschlackung 2026-07-10):
@@ -3170,8 +3183,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var exc = excAll.filter(function(it){ return it.status.indexOf("excluded-belowfloor")!==0; }).sort(byRunFit);
     var verw = verworfenAll();
     var offAll = state.items.filter(function(it){ return it.bucket==="offline"; });
+    var offLoc = withMark("offline");   // frisch von dir markiert — der nächste Lauf verbucht sie
     var init = initiativeItems();
-    var total = exc.length + floor.length + verw.length + offAll.length;
+    var total = exc.length + floor.length + verw.length + offAll.length + offLoc.length;
     var html = '<div class="view"><div class="pagehead">Archiv</div>'+
       '<div class="pagesub">Wartung und Nachschlagen.</div>';
     html += '<div class="hero sm">'+
@@ -3268,12 +3282,24 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // --- Offline: die jüngsten toten Anzeigen direkt sichtbar, der Rest hinter einem klar
     //     als Knopf erkennbaren vollbreiten Aufklapper (innen nach Lauf gruppiert) —
     //     user GO 2026-07-11, ersetzt die unscheinbare "Einträge"-Zeile.
-    if (offAll.length){
+    if (offAll.length || offLoc.length){
       html += '<div class="arun" id="arc-off"><div class="arunhead sect">'+
         '<span class="rdate">Offline</span>'+
-        '<span class="rid">'+offAll.length+' Stellen</span>'+
-        '<span class="rlabel">Tote Anzeigen, vom Sweep geschlossen — die jüngsten zuerst.</span>'+
+        '<span class="rid">'+(offAll.length+offLoc.length)+' Stellen</span>'+
+        '<span class="rlabel">Tote Anzeigen — vom Sweep geschlossen oder von dir als offline markiert.</span>'+
       "</div>";
+      // Deine frischen Offline-Marken (user GO 2026-07-18): oben sichtbar, bis der nächste
+      // Lauf sie als closed-user-offline verbucht; Zurückholen wie bei Verworfen.
+      if (offLoc.length){
+        html += '<div class="listcard arclist">'+offLoc.map(function(it){
+          return '<div class="row vrow">'+
+            '<span class="dot6 o"></span>'+
+            mainOpen(it,"rmain")+'<div class="rtitle">'+esc(it.title)+'</div><div class="rmeta">'+esc(it.metaLine)+"</div>"+mainClose(it)+
+            '<div class="rfitn '+fitClass(it.fit)+'">'+it.fit+"</div>"+
+            '<button class="btn-o" data-mark="offline" data-id="'+esc(it.id)+'">Zurückholen</button>'+
+          "</div>";
+        }).join("")+"</div>";
+      }
       if (state.open["__arc_off__"]){
         state.runOrder.forEach(function(rid){
           var off = offAll.filter(function(it){ return it.run===rid; });
@@ -3487,9 +3513,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (it.appliedSrv || it.bucket==="verworfen") return;   // DB already knows
       var m = state.marks[it.id]; if (!m) return;
       var verb = m.mark==="beworben" ? "applied" : m.mark==="verworfen" ? "dismissed"
-               : m.mark==="geprueft" ? "checked" : null;
+               : m.mark==="geprueft" ? "checked" : m.mark==="offline" ? "offline" : null;
       if (!verb) return;
-      if (verb==="checked" && it.bucket!=="unverif") return;  // checked is unverified-only
+      if ((verb==="checked"||verb==="offline") && it.bucket!=="unverif") return;  // unverified-only verbs
       if (it.bucket!=="treffer" && it.bucket!=="unverif") return;
       out.push({ id: it.id, action: verb, date: m.date || new Date().toISOString().slice(0,10) });
     });
