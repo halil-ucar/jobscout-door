@@ -355,6 +355,12 @@ a{color:inherit;text-decoration:none}
 .stchip.emp{background:transparent;border:1px solid var(--green-line);color:var(--green2);padding:2px 7px}
 .stchip.std{background:transparent;border:1px solid var(--b14);color:var(--meta);padding:2px 7px}
 .stq-chev{flex:none;font-size:17px;font-weight:600;color:var(--mut2);line-height:1;margin-left:-3px}
+.nlchip{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--text2);
+  border:1px solid var(--b18);border-radius:999px;padding:6px 12px;cursor:pointer;margin:12px 0 2px}
+.nlchip:hover{background:var(--hover)}
+.nlchip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.nlchip .c{font:600 11px var(--mono);background:var(--chipbg);color:var(--meta);border-radius:999px;padding:1px 7px}
+.nlchip.on .c{background:rgba(255,255,255,.2);color:#fff}
 .stnotice{margin:10px 0;padding:10px 13px;border-radius:9px;background:var(--green-bg);border:1px solid var(--b18);font-size:13px}
 .stdone{margin:14px 0 6px;font-size:13px;color:var(--meta)}
 .stdone b{color:var(--text2)}
@@ -1830,6 +1836,15 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
   function renderPruefseite(){
     var items = visibleIn("unverif");
+    // Filter „Ohne Live-Beweis" (user GO 2026-07-18): zeigt quer über alle Gruppen nur
+    // die Einträge, deren Anzeige gerade KEINEN frischen LIVE-Stempel des Sweeps trägt
+    // (AMBIG/BLOCKED/UNKNOWN/ohne Stempel) — die vollständige, immer aktuelle Antwort
+    // auf „wo muss ich selbst nachsehen, ob das noch online ist?". Reine Anzeige, null
+    // Pflege: leitet sich live aus den Sweep-Stempeln ab.
+    var noProof = function(it){ return ((it.raw||{}).sweepStatus||"") !== "LIVE"; };
+    var nlCount = items.filter(noProof).length;
+    var nlOn = !!state.noLive;
+    if (nlOn) items = items.filter(noProof);
     // Redesign 2026-07-10 (user GO): die 7 Fein-Klassen (sectionOf) speisen jetzt DREI
     // Handgriff-Gruppen + die Automatik — das Zwei-Haufen-Prinzip bleibt (Gruppen 1-3 = du
     // bist dran, Gruppe 4 = Maschine), nur die Binnenordnung folgt dem nächsten Handgriff.
@@ -1844,7 +1859,12 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // Volltext wandert als Tooltip auf den Gruppenkopf. "Automatisch" statt "Automatik".
     var html = '<div class="view"><div class="pagehead">Prüfen</div>'+
       '<div class="pagesub">Oben bist du dran, unten arbeitet die Automatik.</div>';
-    if (!items.length) html += '<div class="emptybox">Keine offenen unverifizierten Stellen.</div>';
+    html += '<div><button class="nlchip'+(nlOn?" on":"")+'" data-pnl>'+
+      'Ohne Live-Beweis <span class="c">'+nlCount+"</span></button></div>";
+    if (!items.length)
+      html += '<div class="emptybox">'+(nlOn
+        ? "Nichts übrig — alle offenen Stellen tragen gerade einen LIVE-Beweis."
+        : "Keine offenen unverifizierten Stellen.")+"</div>";
     // Batch-Modus (user GO 2026-07-10 #2): EIN Link übergibt der Tür alle "Selbst
     // nachsehen"-Kandidaten ohne Opus-Urteil; die Tür führt durch die Liste (Einfügen ->
     // Wächter -> Senden -> automatisch weiter). Echter <a>-Link (sandbox-sicher), Cap 80.
@@ -3680,6 +3700,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (drt){ e.preventDefault(); refresh(); return; }
     var dt = e.target.closest("[data-details]");
     if (dt){ var id = dt.getAttribute("data-details"); state.open[id] = !state.open[id]; renderAll(); return; }
+    if (e.target.closest("[data-pnl]")){ state.noLive = !state.noLive; renderAll(); return; }
     // Prüfliste-Bereiche sind DEFAULT-OFFEN: toggle auf explizit false/true (nicht !undefined).
     var sc = e.target.closest("[data-sect]");
     if (sc){ var sid = sc.getAttribute("data-sect"); state.open[sid] = state.open[sid] === false; renderAll(); return; }
