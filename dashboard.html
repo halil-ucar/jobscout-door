@@ -1774,6 +1774,18 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // Pille) — die Badges bilden EINE fortlaufende Zeile statt eines Stapel-Turms links.
     if (it.sonnet) why = '<span class="whychip sonnetchip" title="Grobe Vorab-Bewertung durch Sonnet (Kurzcheck) — kein Opus-Deep-Check">Bewertung von Sonnet</span>'+why;
     if (it.bank) why = '<span class="whychip bankchip" title="'+esc((it.raw&&it.raw.ownershipNote)||"")+'">Bank-Eigentümer</span>'+why;
+    // Liveness-Badge (user GO 2026-07-18): manuell geprüfte Karten, deren Anzeige die Maschine
+    // strukturell NIE live-beweisen kann (Botwall/NEIN-Host, eigene Bot-Abwehr) — die Frische
+    // hängt allein am letzten Blick des Nutzers. Bleibt auch in „Voll geprüft" dauerhaft stehen.
+    if (sec==="belegt" && !((it.raw||{}).livenessConfirmed)){
+      var hLB = hostOfUrl(it.url);
+      var lbUnprovable = (hLB && (allowlistCoveredBy(hLB, window.__NEVERLIST__||[]) || verdictOf(hLB).v === "NEIN"))
+        || String((it.raw||{}).sweepStatus||"").toUpperCase()==="AMBIG";
+      if (lbUnprovable){
+        var lbSeen = String((it.raw||{}).deepcheckRequested||"").slice(0,10);
+        why += '<span class="whychip host" title="Die Maschine kann diese Anzeige nie automatisch live-prüfen (Botwall/eigene Bot-Abwehr). Ob sie noch online ist, hängt an deinem letzten Blick — vor einer Bewerbung den Link kurz öffnen.">Liveness nicht automatisch prüfbar'+(lbSeen?' · von dir gelesen am '+esc(lbSeen):'')+'</span>';
+      }
+    }
     why = applogChipHTML(it) + why;   // Log-Abgleich (user GO 2026-07-10) zuerst — verhindert Doppelbewerbung
     var alwBox = "";
     if (sec==="botwall"){
@@ -1900,6 +1912,13 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           ' title="Öffnet die Tür einmal und führt durch alle Stellen: Anzeigentext einfügen, senden, automatisch weiter — jede Sendung bleibt fest ihrer Stelle zugeordnet.">'+
           'Alle offenen Opus-Checks durchgehen ('+dcbCands.length+')</a></div>';
       }
+      // „Neue Stelle prüfen" (user GO 2026-07-18): eine Stelle, die der Scout nie gesehen hat,
+      // manuell zum vollen Opus-Deep-Check einreichen (URL + Firma + Titel + Anzeigentext).
+      // Echter <a>-Link (sandbox-sicher) in die Tür; im Tür-Dashboard als Direkt-Knopf.
+      html += '<div style="margin:8px 0 2px">'+(DOOR_DASH
+        ? '<button class="btn-g" data-pnewdc title="Eigenen Fund einreichen: URL, Firma, Titel und Anzeigentext — der nächste Lauf macht den vollen Opus-Deep-Check.">➕ Neue Stelle prüfen</button>'
+        : '<a class="btn-g" style="text-decoration:none;display:inline-block" target="_blank" rel="noopener noreferrer" href="'+esc(doorGui()+"#newdc=1")+'" title="Eigenen Fund einreichen: URL, Firma, Titel und Anzeigentext — der nächste Lauf macht den vollen Opus-Deep-Check.">➕ Neue Stelle prüfen</a>')+
+        '</div>';
     }
     function sect(key, dotColor, title, subtitle, tip, arr){
       if (!arr.length) return "";
@@ -2569,6 +2588,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      landen hier und werden nativ übernommen. NUR im DOOR_DASH-Build aktiv — Artefakt
      und Showcase-Demo bleiben unverändert. window.__DOOR_DEMO__ speist die Vorschau. */
   var P = { view:null, jobId:null, sel:{}, sending:false, state:null, flash:"",
+            // „Neue Stelle prüfen" (user GO 2026-07-18): Formular-Entwurf + Wächter-Warnung;
+            // lastLook = Sitzungs-Quittung des Letzter-Blick-Schritts vor dem Anschreiben.
+            nd:null, ndWarn:null, lastLook:{},
             dc:null, dcDraft:"", dcWarn:null, dcb:null, dcbCands:null, sentHashes:{} };
   var pDcReq = {};   // optimistische "Opus-Check angefordert"-Chips bis zum nächsten Lauf
   function doorApi(action, data){
@@ -2669,6 +2691,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (!DOOR_DASH || !P.view) return "";
     if (P.view === "job") return portalJobHTML();
     if (P.view === "dc") return portalDcHTML();
+    if (P.view === "newdc") return portalNewDcHTML();
     return "";
   }
   function portalOpenJob(d){
@@ -2749,6 +2772,26 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       (j ? pPhaseChip(j.phase) : "")+"</div>"+
       '<div style="margin:8px 0 14px"><a class="deep-open" target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">Stellenanzeige öffnen</a></div>';
     if (!j){
+      /* Letzter Blick (user GO 2026-07-18): vor dem ersten Anschreiben-Schritt für eine Stelle
+         OHNE Maschinen-Live-Beweis einmal die Anzeige öffnen lassen — nur der Mensch kann das
+         hier prüfen. Fail-safe: fehlen die Felder (Queue kennt sie nicht), gilt „nicht belegt". */
+      var llProvable = !!(it && (it.livenessConfirmed === true ||
+        String((it.sweepStatus||"")).toUpperCase() === "LIVE"));
+      if (!llProvable && !P.lastLook[id]){
+        var llSeen = String((it&&it.deepcheckRequested)||"").slice(0,10);
+        var llAge = llSeen ? daysSinceStamp(llSeen) : null;
+        h += '<div class="pshwarn" style="margin:8px 0">⚠ <b>Liveness nicht automatisch prüfbar.</b> '+
+          'Die Maschine kann nicht wissen, ob diese Anzeige noch online ist'+
+          (llSeen ? ' — von dir zuletzt gelesen am '+esc(llSeen)+
+            (llAge!=null && llAge>=7 ? ' (<b>vor '+llAge+' Tagen!</b>)' : '') : '')+
+          '. Öffne sie kurz, bevor das Anschreiben entsteht.</div>'+
+          '<div class="stactions">'+
+          '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">Anzeige öffnen</a>'+
+          '<button class="stbtn primary" data-plastlook="'+esc(String(id))+'">Eben geöffnet — noch online ✓</button>'+
+          '<button class="stbtn warn" data-poffline="'+esc(String(id))+'" title="Bucht die Offline-Marke (closed-user-offline) — die Karte verlässt die Prüfliste; taucht die Rolle wieder auf, wird sie automatisch reaktiviert">Anzeige ist weg → Offline melden</button>'+
+          '</div>';
+        return h + pFlashHTML() + "</div>";
+      }
       /* Entrümpelung 2026-07-17: der Knopf sagt alles — die Erklärprosa ist weg,
          die Wartezeit wandert als einzige Zusatzinfo auf den Knopf */
       h += '<div class="stactions"><button class="stbtn primary" data-pcmd="request"'+dis+'>Paket anfordern (~4–5 Min.)</button></div>';
@@ -2878,8 +2921,12 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var j = pJobs()[P.jobId] || {};
     if (cmd === "request"){
       var it = pQueueItem(P.jobId) || {};
+      // Liveness-Klasse für den Ordner-Zettel (user GO 2026-07-18) — fail-safe: unbekannt = red.
+      var llc = (String(it.status||"").indexOf("closed")===0 || String(it.status||"").indexOf("excluded")===0) ? "initiativ"
+        : (it.livenessConfirmed === true || String(it.sweepStatus||"").toUpperCase()==="LIVE") ? "ok" : "red";
       P.sending = true; P.flash = "wird gesendet …"; renderAll();
-      doorApi("request", { id:P.jobId, company:it.company||"", title:it.title||"", url:it.url||P.jobId })
+      doorApi("request", { id:P.jobId, company:it.company||"", title:it.title||"", url:it.url||P.jobId,
+                           liveClass: llc, liveSeen: String(it.deepcheckRequested||"").slice(0,10) })
         .then(function(){ P.sending = false; return portalRefresh(); })
         .catch(function(e){ P.sending = false; P.flash = "Fehler: "+e.message; renderAll(); });
       return;
@@ -3022,6 +3069,59 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<button class="stbtn" style="margin-left:8px;padding:3px 9px;font-size:11px" data-pdcundo>✗ Rückgängig</button></div>';
     }
     return h + pFlashHTML() + "</div>";
+  }
+  /* „Neue Stelle prüfen" (user GO 2026-07-18): eigener Fund -> voller Opus-Deep-Check.
+     Gleiche Einfüge-Wächter wie der Opus-Check (Müll-Detektor, Firmen-/Titel-Abgleich —
+     hier gegen die selbst eingetippte Firma —, Duplikat-Hash), Versand als deepcheck-new
+     über denselben Tür-Kanal. Der Lauf legt den Eintrag an; war die Stelle schon bekannt,
+     meldet der Ingest „already-decided" statt einen zweiten Opus-Check zu verbrennen. */
+  function portalNewDcHTML(){
+    var d = P.nd || {};
+    var dis = P.sending ? " disabled" : "";
+    var inp = function(id, ph, val, w){
+      return '<input id="'+id+'" placeholder="'+esc(ph)+'" value="'+esc(val||"")+'" style="width:'+(w||"100%")+
+        ';margin:6px 6px 0 0;padding:8px 10px;border:1px solid var(--b18);border-radius:8px;background:transparent;color:var(--ink)">';
+    };
+    var h = '<div class="view"><button class="btn-g" data-pback style="padding-left:0">← Zurück</button>'+
+      '<div class="pagehead" style="font-size:20px;margin-top:10px">➕ Neue Stelle prüfen</div>'+
+      '<div class="pagesub">Ein eigener Fund, den der Scout nie gesehen hat: Link, Firma, Titel und den kompletten Anzeigentext einwerfen — der nächste Lauf macht den vollen Opus-Deep-Check (Dossier + Fit, Ergebnis in der Prüfliste unter „Voll geprüft"). Auch für LinkedIn/Indeed/Stepstone-Funde: der Link wird nur gespeichert, nie abgerufen.</div>'+
+      inp("pndurl", "Stellen-URL (https://…)", d.url)+
+      inp("pndco", "Firma", d.company, "48%")+
+      inp("pndti", "Stellentitel", d.title, "48%")+
+      inp("pndort", "Ort (optional, z. B. Remote / Essen)", d.ort, "48%")+
+      '<textarea id="pndtext" class="stfeed" style="min-height:200px;margin-top:8px" placeholder="Kompletten Anzeigentext hier einfügen (Aufgaben, Anforderungen, Standort, Vertragsart …)">'+esc(d.text||"")+"</textarea>"+
+      '<div style="margin:6px 0;min-height:22px">'+((d.text&&d.company)?pgChipHTML(d.text, {company:d.company, title:d.title||""}):"")+"</div>";
+    if (P.ndWarn){
+      h += '<div class="pshwarn" style="margin:8px 0">⚠ '+esc(P.ndWarn.msg)+"</div>"+
+        '<div class="stactions">'+
+        '<button class="stbtn warn" data-pndsend="force">Trotzdem senden</button>'+
+        '<button class="stbtn" data-pndcancel>Abbrechen</button></div>';
+    } else {
+      h += '<div class="stactions"><button class="stbtn primary" data-pndsend'+dis+'>An den Scout senden</button></div>';
+    }
+    return h + pFlashHTML() + "</div>";
+  }
+  function pndRead(){
+    var g = function(id){ return ((document.getElementById(id)||{}).value||"").trim(); };
+    return { url:g("pndurl"), company:g("pndco"), title:g("pndti"), ort:g("pndort"),
+             text:((document.getElementById("pndtext")||{}).value||"").trim() };
+  }
+  function pndSend(force){
+    var d = pndRead();
+    P.nd = d;
+    if (!/^https?:\/\/\S+$/.test(d.url)){ P.flash = "Bitte eine vollständige Stellen-URL (https://…) angeben."; return renderAll(); }
+    if (!d.company || !d.title){ P.flash = "Firma und Stellentitel sind Pflicht — der Deep-Check prüft den Arbeitgeber."; return renderAll(); }
+    if (d.text.length < 80){ P.flash = "Das ist zu wenig Text — bitte die ganze Anzeige einfügen."; return renderAll(); }
+    if (!force){
+      var g = pgCheck(d.text, { id:d.url, company:d.company, title:d.title }, []);
+      if (g && g.kind !== "cross"){ P.ndWarn = g; return renderAll(); }
+    }
+    doorShip([{ id:d.url, action:"deepcheck-new", date:new Date().toISOString().slice(0,10),
+                company:d.company, title:d.title, ort:d.ort||"",
+                adText:d.text.slice(0,20000) }]);
+    P.sentHashes[pgHash(d.text)] = d.company || d.title;
+    P.nd = null; P.ndWarn = null; P.view = null; P.flash = "";
+    renderAll();
   }
   function pdcShip(item, text){
     doorShip([{ id:item.id, action:"deepcheck", date:new Date().toISOString().slice(0,10),
@@ -3669,6 +3769,23 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (po){ try { var pp = JSON.parse(po.getAttribute("data-popt")); P.sel[pp.p] = pp.c; renderAll(); } catch(err){} return; }
     var pd = e.target.closest("[data-pdc]");
     if (pd){ try { P.dc = JSON.parse(pd.getAttribute("data-pdc")); P.dcb = null; P.dcDraft = ""; P.dcWarn = null; P.view = "dc"; renderAll(); } catch(err){} return; }
+    // „Neue Stelle prüfen" (user GO 2026-07-18)
+    if (e.target.closest("[data-pnewdc]")){ P.nd = P.nd || {}; P.ndWarn = null; P.view = "newdc"; state.view = "pruefseite"; renderAll(); return; }
+    var pns = e.target.closest("[data-pndsend]");
+    if (pns){ pndSend(pns.getAttribute("data-pndsend") === "force"); return; }
+    if (e.target.closest("[data-pndcancel]")){ P.nd = pndRead(); P.ndWarn = null; renderAll(); return; }
+    // Letzter Blick vor dem Anschreiben (user GO 2026-07-18)
+    var pll = e.target.closest("[data-plastlook]");
+    if (pll){ P.lastLook[pll.getAttribute("data-plastlook")] = true; renderAll(); return; }
+    var pof = e.target.closest("[data-poffline]");
+    if (pof){
+      var ofid = pof.getAttribute("data-poffline");
+      doorShip([{ id:ofid, action:"offline", date:new Date().toISOString().slice(0,10) }]);
+      P.view = null; P.jobId = null;
+      P.flash = "";
+      renderAll();
+      return;
+    }
     if (e.target.closest("[data-pdcb]")){
       if (P.dcbCands && P.dcbCands.length){
         P.dcb = { items: P.dcbCands, idx: 0, sent: {}, lastSent: null };
@@ -3791,6 +3908,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           if (items.length){ P.dcb = { items:items, idx:0, sent:{}, lastSent:null };
             P.dc = items[0]; P.view = "dc"; state.view = "pruefseite"; took = true; }
         } } catch(e){} }
+      // „Neue Stelle prüfen"-Einsprung vom Artefakt-Dashboard (user GO 2026-07-18)
+      if (/#newdc=1/.test(hash)){ P.nd = {}; P.ndWarn = null; P.view = "newdc"; state.view = "pruefseite"; took = true; }
       if (took) history.replaceState(null, "", location.pathname + location.search);
     })();
     portalRefresh();
