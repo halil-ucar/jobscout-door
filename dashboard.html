@@ -1182,7 +1182,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (e.dateConfirmed && e.date) segs.push("online seit " + e.date);
       return {
         raw: e, id: idOf(e) || ("row-"+i), url: e.url || "",
-        company: e.company || "Unbekannt", title: e.title || "Ohne Titel",
+        // Manuell eingereichte Neue-Stelle-Einträge dürfen ohne Identität ankommen (user GO
+        // 2026-07-18 #2) — bis der Opus-Check sie aus dem Text bestimmt, zeigt die Karte den
+        // Host + einen ehrlichen Platzhalter statt „Unbekannt/Ohne Titel".
+        company: e.company || (e.source === "manual-user" && e.url ? hostOfUrl(e.url) : "") || "Unbekannt",
+        title: e.title || (e.source === "manual-user" ? "Neue Stelle — Titel folgt aus dem Opus-Check" : "Ohne Titel"),
         fit: Math.max(0, Math.min(100, Math.round(Number(e.fitScore)||0))),
         // "Bewertung von Sonnet": rough Kurzcheck score, no Opus deep-check. New records carry
         // scoredBy; legacy Kurzcheck entries are detected by their dossier heading.
@@ -3075,6 +3079,36 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      hier gegen die selbst eingetippte Firma —, Duplikat-Hash), Versand als deepcheck-new
      über denselben Tür-Kanal. Der Lauf legt den Eintrag an; war die Stelle schon bekannt,
      meldet der Ingest „already-decided" statt einen zweiten Opus-Check zu verbrennen. */
+  /* Auto-Erkennung (user GO 2026-07-18 #2, "nur copy paste"): deterministische Heuristik füllt
+     Firma/Titel/Ort aus dem eingefügten Anzeigentext vor — nur LEERE, nicht von Hand berührte
+     Felder, jederzeit korrigierbar. Autorität hat am Ende der Opus-Check (liest den Volltext
+     und bestätigt/korrigiert die Identität; leere Felder sind deshalb erlaubt). */
+  function pndExtract(text){
+    var t = String(text||"");
+    var lines = t.split(/\n+/).map(function(x){ return x.replace(/\s+/g," ").trim(); }).filter(Boolean);
+    var out = { title:"", company:"", ort:"" };
+    var ROLE = /(engineer|entwickl|consultant|berater|manager|specialist|spezialist|scientist|developer|architekt|architect|analyst|koordinator|ingenieur)/i;
+    var GEN = /\((?:[mwfdxh])(?:\s*\/\s*[mwfdxh]){1,2}\)|\(all genders\)|\(gn\)/i;
+    for (var i=0;i<Math.min(lines.length,8);i++){
+      var L = lines[i];
+      if (L.length<8 || L.length>110) continue;
+      if (GEN.test(L) || ROLE.test(L)){ out.title = L; break; }
+    }
+    var LEGAL = "(?:GmbH(?:\\s*&\\s*Co\\.?\\s*KG(?:aA)?)?|AG|SE|KG|UG|e\\.\\s?V\\.|Inc\\.?|Ltd\\.?|B\\.?V\\.?)";
+    var m = new RegExp("\\b(?:bei|at|für|for)\\s+([A-ZÄÖÜ][\\wäöüÄÖÜß&.\\- ]{1,60}?\\s"+LEGAL+")(?=[\\s,.!:;)]|$)").exec(t);
+    if (!m){
+      for (var j=0;j<Math.min(lines.length,10);j++){
+        var m2 = new RegExp("^([A-ZÄÖÜ][\\wäöüÄÖÜß&.\\- ]{1,60}?\\s"+LEGAL+")$").exec(lines[j]);
+        if (m2){ m = m2; break; }
+      }
+    }
+    if (!m) m = new RegExp("([A-ZÄÖÜ][\\wäöüÄÖÜß&.\\- ]{1,60}?\\s"+LEGAL+")(?=[\\s,.!:;)]|$)").exec(t);
+    if (m) out.company = m[1].replace(/\s+/g," ").trim();
+    var o = /\b(?:Standort|Arbeitsort|Einsatzort|Location|Ort)\s*:?\s+([A-ZÄÖÜ][\wäöüÄÖÜß\-\/ ]{2,40}?)(?=[,.\n(]|\s{2}|$)/.exec(t);
+    if (o) out.ort = o[1].trim();
+    else if (/\b(100\s?%\s?remote|vollständig remote|fully remote|remote-first)\b/i.test(t)) out.ort = "Remote";
+    return out;
+  }
   function portalNewDcHTML(){
     var d = P.nd || {};
     var dis = P.sending ? " disabled" : "";
@@ -3084,12 +3118,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     };
     var h = '<div class="view"><button class="btn-g" data-pback style="padding-left:0">← Zurück</button>'+
       '<div class="pagehead" style="font-size:20px;margin-top:10px">➕ Neue Stelle prüfen</div>'+
-      '<div class="pagesub">Ein eigener Fund, den der Scout nie gesehen hat: Link, Firma, Titel und den kompletten Anzeigentext einwerfen — der nächste Lauf macht den vollen Opus-Deep-Check (Dossier + Fit, Ergebnis in der Prüfliste unter „Voll geprüft"). Auch für LinkedIn/Indeed/Stepstone-Funde: der Link wird nur gespeichert, nie abgerufen.</div>'+
+      '<div class="pagesub">Nur zwei Pastes: Stellen-Link und kompletten Anzeigentext einfügen — Firma, Titel und Ort erkennt das System aus dem Text (unten vorausgefüllt, bei Bedarf korrigieren; leer lassen ist auch ok — dann bestimmt sie der Opus-Check). Auch für LinkedIn/Indeed/Stepstone-Funde: der Link wird nur gespeichert, nie abgerufen.</div>'+
       inp("pndurl", "Stellen-URL (https://…)", d.url)+
-      inp("pndco", "Firma", d.company, "48%")+
-      inp("pndti", "Stellentitel", d.title, "48%")+
-      inp("pndort", "Ort (optional, z. B. Remote / Essen)", d.ort, "48%")+
       '<textarea id="pndtext" class="stfeed" style="min-height:200px;margin-top:8px" placeholder="Kompletten Anzeigentext hier einfügen (Aufgaben, Anforderungen, Standort, Vertragsart …)">'+esc(d.text||"")+"</textarea>"+
+      '<div id="pndautochip" style="margin:6px 0;min-height:20px">'+((d.autoCo||d.autoTi||d.autoOrt)
+        ? '<span class="checkchip" style="margin-top:0">⚙ Felder automatisch erkannt — kurz prüfen</span>' : "")+"</div>"+
+      inp("pndco", "Firma (leer = erkennt der Opus-Check)", d.company, "48%")+
+      inp("pndti", "Stellentitel (leer = erkennt der Opus-Check)", d.title, "48%")+
+      inp("pndort", "Ort (optional)", d.ort, "48%")+
       '<div style="margin:6px 0;min-height:22px">'+((d.text&&d.company)?pgChipHTML(d.text, {company:d.company, title:d.title||""}):"")+"</div>";
     if (P.ndWarn){
       h += '<div class="pshwarn" style="margin:8px 0">⚠ '+esc(P.ndWarn.msg)+"</div>"+
@@ -3107,19 +3143,30 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
              text:((document.getElementById("pndtext")||{}).value||"").trim() };
   }
   function pndSend(force){
+    var flags = P.nd || {};
     var d = pndRead();
-    P.nd = d;
+    P.nd = { url:d.url, company:d.company, title:d.title, ort:d.ort, text:d.text,
+             touchedCo:flags.touchedCo, touchedTi:flags.touchedTi,
+             autoCo:flags.autoCo, autoTi:flags.autoTi, autoOrt:flags.autoOrt };
     if (!/^https?:\/\/\S+$/.test(d.url)){ P.flash = "Bitte eine vollständige Stellen-URL (https://…) angeben."; return renderAll(); }
-    if (!d.company || !d.title){ P.flash = "Firma und Stellentitel sind Pflicht — der Deep-Check prüft den Arbeitgeber."; return renderAll(); }
     if (d.text.length < 80){ P.flash = "Das ist zu wenig Text — bitte die ganze Anzeige einfügen."; return renderAll(); }
+    // Identität gilt nur als DEINE Aussage, wenn du selbst getippt/korrigiert hast — sonst
+    // (auto-erkannt oder leer) bestätigt der Opus-Check sie aus dem Text (identityAuto).
+    var identityAuto = !((d.company && flags.touchedCo) || (d.title && flags.touchedTi));
     if (!force){
-      var g = pgCheck(d.text, { id:d.url, company:d.company, title:d.title }, []);
-      if (g && g.kind !== "cross"){ P.ndWarn = g; return renderAll(); }
+      var h2 = pgHash(d.text);
+      if (P.sentHashes[h2]){ P.ndWarn = { kind:"dup", msg:'Das ist derselbe Text wie eben bei „'+P.sentHashes[h2]+'" — hast du die neue Anzeige kopiert?' }; return renderAll(); }
+      if (pgChrome(d.text)){ P.ndWarn = { kind:"chrome", msg:"Das sieht nach Webseiten-Gerüst aus (Cookie-/Menü-Texte), nicht nach der Anzeige." }; return renderAll(); }
+      if (!identityAuto && d.company){
+        var g = pgCheck(d.text, { id:d.url, company:d.company, title:d.title }, []);
+        if (g && g.kind !== "cross"){ P.ndWarn = g; return renderAll(); }
+      }
     }
     doorShip([{ id:d.url, action:"deepcheck-new", date:new Date().toISOString().slice(0,10),
-                company:d.company, title:d.title, ort:d.ort||"",
+                company:d.company||"", title:d.title||"", ort:d.ort||"",
+                identityAuto: identityAuto,
                 adText:d.text.slice(0,20000) }]);
-    P.sentHashes[pgHash(d.text)] = d.company || d.title;
+    P.sentHashes[pgHash(d.text)] = d.company || d.title || d.url;
     P.nd = null; P.ndWarn = null; P.view = null; P.flash = "";
     renderAll();
   }
@@ -3884,6 +3931,28 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var chip = document.getElementById("pdcchip");
       if (chip) chip.innerHTML = pgChipHTML(P.dcDraft, P.dc||{});
     }
+    // „Neue Stelle prüfen" (user GO 2026-07-18 #2): beim Einfügen des Anzeigentexts leere,
+    // unberührte Identitätsfelder automatisch vorbefüllen — ohne je eine Nutzereingabe zu
+    // überschreiben; Handkorrektur eines Felds beendet dessen Auto-Modus dauerhaft.
+    if (e.target && e.target.id === "pndtext"){
+      P.nd = P.nd || {};
+      P.nd.text = e.target.value; P.ndWarn = null;
+      var ex = pndExtract(P.nd.text);
+      var fill = function(id, val, tKey, aKey){
+        var el = document.getElementById(id);
+        if (!el || P.nd[tKey]) return;
+        if (val && (!el.value || P.nd[aKey])){ el.value = val; P.nd[aKey] = true; }
+      };
+      fill("pndco", ex.company, "touchedCo", "autoCo");
+      fill("pndti", ex.title, "touchedTi", "autoTi");
+      fill("pndort", ex.ort, "touchedOrt", "autoOrt");
+      var ac = document.getElementById("pndautochip");
+      if (ac) ac.innerHTML = (P.nd.autoCo||P.nd.autoTi||P.nd.autoOrt)
+        ? '<span class="checkchip" style="margin-top:0">⚙ Felder automatisch erkannt — kurz prüfen</span>' : "";
+    }
+    if (e.target && e.target.id === "pndco"){ P.nd = P.nd||{}; P.nd.touchedCo = true; P.nd.autoCo = false; }
+    if (e.target && e.target.id === "pndti"){ P.nd = P.nd||{}; P.nd.touchedTi = true; P.nd.autoTi = false; }
+    if (e.target && e.target.id === "pndort"){ P.nd = P.nd||{}; P.nd.touchedOrt = true; P.nd.autoOrt = false; }
   });
   document.addEventListener("submit", function(e){
     if (e.target && e.target.className === "lwform") lwMarkPending();
