@@ -272,6 +272,18 @@ a{color:inherit;text-decoration:none}
 .rfit .n.fitc-m{background:var(--amber-bg);border-color:var(--amber-line)}
 .rfit .n.fitc-l{background:var(--red-bg);border-color:var(--red-line)}
 .rfit .l{display:none}
+/* Merken-Stern (user 2026-07-21): in der Aktionszeile, links vom „Bewerben"-Knopf.
+   Ruhezustand dezent grau (☆), gemerkt schwarz gefüllt (★) — bei 40+ Zeilen scannbar. */
+.rstar{flex:none;width:30px;height:34px;padding:0;border:0;background:none;cursor:pointer;
+  font-size:19px;line-height:1;color:var(--mut2);border-radius:8px;
+  display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;
+  transition:color .12s ease, transform .12s ease, background .12s ease}
+.rstar:hover{color:var(--ink);background:rgba(0,0,0,.05)}
+.rstar.on{color:var(--ink)}
+.rstar.on:hover{color:#000}
+.rstar:active{transform:scale(.85)}
+.racts .rstar,.pacts-row .rstar{width:32px;height:30px;font-size:18px;margin-right:1px}
+@media (prefers-reduced-motion:reduce){.rstar{transition:none}.rstar:active{transform:none}}
 .racts{flex:none;display:flex;align-items:center;gap:5px}
 .btn-p{font-size:13px;font-weight:600;color:#fff;background:var(--ink);border-radius:999px;
   padding:6px 14px;transition:background .15s ease,transform .06s ease;white-space:nowrap;
@@ -953,7 +965,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (/^excluded-(title|seniority|contract|werkstudent|praktikum|freelance|employer|defense|training|industrial)/.test(s)) return "Vorfilter";
     return "";
   }
-  var MARKLABEL = { bewerben:"Bewerben", ueberlegen:"Überlegen", beworben:"Beworben", geprueft:"Geprüft", verworfen:"Verworfen" };
+  var MARKLABEL = { bewerben:"Bewerben", ueberlegen:"Überlegen", merken:"Gemerkt", beworben:"Beworben", geprueft:"Geprüft", verworfen:"Verworfen" };
 
   /* ---------------- state ---------------- */
   var MARKS_KEY = "jobscout-marks-v2";
@@ -963,7 +975,19 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     marks: loadMarks(), logmarks: loadLogmarks(), open: {}
   };
   function loadMarks(){ try{ return JSON.parse(localStorage.getItem(MARKS_KEY)||"{}")||{}; }catch(e){ return {}; } }
-  function saveMarks(){ try{ localStorage.setItem(MARKS_KEY, JSON.stringify(state.marks)); }catch(e){} }
+  function itemById(id){ for (var i=0;i<state.items.length;i++){ if (state.items[i].id===id) return state.items[i]; } return null; }
+  /* Speichern MIT Rücklese-Verifikation (user 2026-07-21): eine Merkung darf nie STILL
+     verloren gehen. Stimmt der zurückgelesene Wert nicht mit dem Geschriebenen überein
+     (Speicher voll / privater Modus / Ausnahme), setzt saveErr das rote Warnband in
+     renderAll → showSaveWarn(), damit der Nutzer es sofort sieht. */
+  function saveMarks(){
+    try{
+      var payload = JSON.stringify(state.marks);
+      localStorage.setItem(MARKS_KEY, payload);
+      state.saveErr = (localStorage.getItem(MARKS_KEY) !== payload);
+    }catch(e){ state.saveErr = true; }
+    return !state.saveErr;
+  }
   /* (Der ✉-Anschreiben-Vormerk-Toggle ist entfernt, user 2026-07-11 — Anschreiben laufen
      ausschließlich über die Bewerbungs-Tür ("Paket anfordern"). Ein evtl. noch gespeicherter
      jobscout-letters-v1-Schlüssel im localStorage bleibt unangetastet, wirkt aber nicht mehr.) */
@@ -1265,12 +1289,24 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     for (var i=0;i<sup.length;i++){ var a = state.marks[sup[i]]; if (a) return a.mark; }
     return inheritedMark(it);
   }
+  /* DIREKTER Mark ohne die unscharfe kanonische Vererbung (nur eigener Eintrag +
+     supersededUrls-Alias). Für den Merken-Stern maßgeblich (user 2026-07-21): der SICHTBARE
+     Toggle darf nur die Marke spiegeln, die setMark auch umschalten kann — sonst leuchtet ein
+     fuzzy-Zwilling gefüllt, lässt sich aber nicht löschen und der Zähler doppelt. Die
+     zuverlässige Repost-Vererbung (supersededUrls, gleicher Eintrag/neue URL) bleibt. */
+  function directMark(it){
+    var m = state.marks[it.id]; if (m) return m.mark;
+    var sup = (it.raw && it.raw.supersededUrls) || [];
+    for (var i=0;i<sup.length;i++){ var a = state.marks[sup[i]]; if (a) return a.mark; }
+    return null;
+  }
   function effMark(it){
     if (it.appliedSrv) return "beworben";
     var m = markOf(it);
-    // "Überlegen" ist seit dem Redesign 2026-07-10 kein wirkender Zustand mehr: gespeicherte
-    // Marks bleiben im localStorage (Rollback-sicher), blenden aber nichts mehr aus.
-    return m === "ueberlegen" ? null : m;
+    // "Überlegen" (Alt) UND "Merken" (der schwarze Stern, user 2026-07-21) sind ANHEFTEN,
+    // kein verdeckender Zustand: die Karte bleibt in Start/Prüfen sichtbar (Pin), der Stern
+    // selbst ist die Anzeige, und der Merken-Reiter sammelt sie zusätzlich über markOf.
+    return (m === "ueberlegen" || m === "merken") ? null : m;
   }
   /* Bewerbungslog-Abgleich (user GO 2026-07-10): jede Karte wird gegen das PII-freie
      Log-Extrakt (window.__APPLOG__, applog.py --status-export) gehalten — entdeckte Lücke:
@@ -1396,7 +1432,12 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       // Rücknahme: entfernt das noch UNVERARBEITETE Zwilling-Paket aus der Drive-Datei
       if (DOOR_VERBS[mark]) doorShip([{ id:id, action:DOOR_VERBS[mark], date:today, undo:true }]);
     } else {
-      state.marks[id] = { mark: mark, date: today };
+      var rec = { mark: mark, date: today, ts: Date.now() };
+      // "Merken" (user 2026-07-21): rein LOKALER Stern — NICHT in DOOR_VERBS, wandert also nie
+      // an die Tür. Ein Schnappschuss (Titel/Firma/Link) reist als letzte Rückfall-Sicherung
+      // mit, falls die Stelle irgendwann ganz aus den Daten fällt (bleibt dann als Zeile).
+      if (mark === "merken"){ var itx = itemById(id); if (itx) rec.snap = { t: itx.title||"", c: itx.company||"", u: itx.url||"" }; }
+      state.marks[id] = rec;
       if (DOOR_VERBS[mark]) doorShip([{ id:id, action:DOOR_VERBS[mark], date:today }]);
     }
     saveMarks(); renderAll();
@@ -1408,7 +1449,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (it.bucket==="treffer" || it.bucket==="unverif") known[it.id] = 1;
     });
     var removed = false;
-    Object.keys(state.marks).forEach(function(id){ if(!known[id]){ delete state.marks[id]; removed=true; } });
+    Object.keys(state.marks).forEach(function(id){
+      if (known[id]) return;
+      // „Merken" ist KLEBRIG (user 2026-07-21): nie automatisch entfernen — der Stern bleibt,
+      // bis der Nutzer ihn selbst löst, auch wenn die Stelle offline/aussortiert ist (der
+      // Merken-Reiter zeigt sie dann mit Vermerk; sie darf nie STILL verschwinden).
+      if (state.marks[id] && state.marks[id].mark === "merken") return;
+      delete state.marks[id]; removed=true;
+    });
     if (removed) saveMarks();
   }
 
@@ -1432,6 +1480,32 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     return loc.concat(srv);
   }
   function geprueftLocal(){ return withMark("geprueft"); }
+  /* Merken-Sammlung (user 2026-07-21): ALLE Buckets, damit eine gemerkte Stelle auch dann
+     sichtbar bleibt, wenn sie später offline/aussortiert ist — nie STILL verlieren. */
+  function merkenAll(){
+    return state.items.filter(function(it){ return !it.appliedSrv && directMark(it) === "merken"; });
+  }
+  /* Rückfall: Merken-Marks, deren Stelle GANZ aus den Daten gefallen ist → aus dem
+     gespeicherten Schnappschuss als Stub zeigen, damit der Nutzer sie nie aus den Augen
+     verliert. Nur wenn die Daten geladen sind (sonst keine falschen Stubs). */
+  function merkenStubs(){
+    if (!state.items.length) return [];
+    // Abdeckung aus ALLEN geladenen Einträgen (nicht nur merkenAll): sonst erschiene ein Eintrag,
+    // der inzwischen appliedSrv ist (aus merkenAll gefiltert), fälschlich als „nicht mehr in den
+    // Daten"-Stub, obwohl er da ist. Ein Stub entsteht nur, wenn die gemerkte id in KEINEM
+    // state.items-Eintrag (per id oder supersededUrls-Alias) mehr vorkommt.
+    var present = {};
+    state.items.forEach(function(it){
+      present[it.id] = 1;
+      ((it.raw && it.raw.supersededUrls) || []).forEach(function(u){ present[u] = 1; });
+    });
+    var out = [];
+    Object.keys(state.marks).forEach(function(id){
+      var m = state.marks[id];
+      if (m && m.mark === "merken" && !present[id]) out.push({ id:id, snap:m.snap||null, ts:m.ts||0 });
+    });
+    return out;
+  }
   function counts(){
     var bew = withMark("bewerben").length,
         bwn = beworbenAll().length, verw = verworfenAll().length;
@@ -1442,6 +1516,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       excluded: state.items.filter(function(it){ return it.bucket==="excluded"; }).length,
       bew: bew, beworben: bwn, verworfen: verw,
       pruef: visibleIn("unverif").length,
+      merken: merkenAll().length + merkenStubs().length,   // Tab-Zähler „Merken" (user 2026-07-21)
       bewq: bew,   // Tab-Zähler Bewerbungen = Vorgemerkt (Redesign 2026-07-10)
       applog: (((applogData()||{}).entries)||[]).length   // Tab "Status" = Log-Einträge
     };
@@ -1461,10 +1536,13 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
 
   /* ---------------- renderers ---------------- */
   /* 4 Tabs seit dem Redesign 2026-07-10 (user GO): Verworfen lebt als Archiv-Abschnitt,
-     die Merkliste als Block "Vorgemerkt" im Bewerbungen-Tab. */
+     die Merkliste als Block "Vorgemerkt" im Bewerbungen-Tab.
+     + Reiter „Merken" (user 2026-07-21): lokale Shortlist per schwarzem Stern; seit
+     2026-07-21 #3 NACH Prüfen (Reihenfolge Start · Prüfen · Merken · …). Zähler „merken". */
   var VIEWS = [
     { key:"overview",  label:"Start",       cnt:"treffer" },
     { key:"pruefseite",label:"Prüfen",      cnt:"pruef" },
+    { key:"merken",    label:"Merken",      cnt:"merken" },
     { key:"bewerbungen",label:"Bewerbungen", cnt:"bewq" },
     { key:"statuslog", label:"Status",      cnt:"applog" },
     { key:"archiv",    label:"Archiv",      cnt:"archiv" }
@@ -1563,6 +1641,18 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       link+"</div>";
   }
 
+  /* Merken-Stern (user 2026-07-21): in der Aktionszeile, links vom „Bewerben"-Knopf (die
+     linke Score-Spalte blieb dem Fit vorbehalten — user 2026-07-21 #2). ☆ = nicht gemerkt,
+     ★ = gemerkt (schwarz). Toggle über die normale setMark-Maschine mit
+     dem LOKALEN Mark „merken" (nicht in DOOR_VERBS → bleibt im Browser, geht sofort, bleibt). */
+  function starHTML(it){
+    var on = directMark(it) === "merken";
+    return '<button class="rstar'+(on?" on":"")+'" data-mark="merken" data-id="'+esc(it.id)+'"'+
+      ' aria-pressed="'+(on?"true":"false")+'"'+
+      ' aria-label="'+(on?"Gemerkt – tippen zum Entfernen":"Merken")+'"'+
+      ' title="'+(on?"Gemerkt – liegt im Reiter „Merken“. Tippen zum Entfernen.":"Merken – zur Shortlist im Reiter „Merken“")+'">'+
+      (on?"★":"☆")+"</button>";
+  }
   function rowHTML(it){
     var mk = effMark(it);
     var chip = mk && mk!=="verworfen" ? '<span class="markchip">'+esc(MARKLABEL[mk]||mk)+"</span>" : "";
@@ -1581,6 +1671,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         mainOpen(it,"rmain")+'<div class="rtitle-line"><span class="rtitle">'+esc(it.title)+"</span>"+nChip+chip+sChip+bChip+lChip+"</div>"+
           '<div class="rmeta">'+esc(it.metaLine)+"</div>"+mainClose(it)+
         '<div class="racts">'+
+          starHTML(it)+
           '<button class="btn-p" data-mark="bewerben" data-id="'+esc(it.id)+'">Bewerben</button>'+
           '<button class="btn-g danger" data-mark="verworfen" data-id="'+esc(it.id)+'">Verwerfen</button>'+
           '<button class="btn-g" data-details="'+esc(it.id)+'">Details</button>'+
@@ -1680,6 +1771,54 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      Anzeige — die Run-Attribution in der DB bleibt unverändert (per-run tracking). Neue Funde
      tragen einen "neu"-Chip; die Prüfliste hat ihren eigenen Tab und wird hier nur verlinkt.
      Dazu seit 2026-07-11 (user GO) das Lauf-Journal unten + der Kicker als Kurzbericht. */
+  /* ---------------- Merken-Reiter (user 2026-07-21) ----------------
+     Deine per Stern angehefteten Stellen, zuletzt gemerkt oben. Aktive Stellen als volle
+     Trefferzeile; inaktive (offline/aussortiert) bleiben MIT Vermerk stehen — nie still weg. */
+  function merkRow(it){
+    if (it.bucket === "treffer" || it.bucket === "unverif") return rowHTML(it);
+    var note = it.bucket === "offline" ? "Anzeige offline"
+             : it.bucket === "verworfen" ? "von dir verworfen" : "vom Scout aussortiert";
+    var open = !!state.open[it.id];
+    return '<div><div class="row">'+
+      '<div class="rfit"><div class="n '+fitClass(it.fit)+'">'+it.fit+'</div><div class="l">Fit</div></div>'+
+      mainOpen(it,"rmain")+'<div class="rtitle-line"><span class="rtitle">'+esc(it.title)+'</span>'+
+        '<span class="markchip" title="Diese Stelle ist nicht mehr aktiv — bleibt gemerkt, bis du den Stern entfernst.">'+esc(note)+'</span></div>'+
+        '<div class="rmeta">'+esc(it.metaLine)+'</div>'+mainClose(it)+
+      '<div class="racts">'+starHTML(it)+'<button class="btn-g" data-details="'+esc(it.id)+'">Details</button></div>'+
+    '</div>'+(open ? '<div class="deepwrap">'+deepPanelHTML(it)+'</div>' : "")+'</div>';
+  }
+  function stubRow(s){
+    var snap = s.snap || {};
+    var label = esc(snap.t || s.id);
+    var title = snap.u
+      ? '<a class="rmain-link" href="'+esc(snap.u)+'" target="_blank" rel="noopener noreferrer">'+label+'</a>'
+      : label;
+    var co = snap.c ? '<div class="rmeta">'+esc(snap.c)+'</div>' : "";
+    // Der Stub trägt einen gefüllten Stern nur als Entfernen-Knopf (die Stelle ist nicht mehr
+    // in den Daten; ein echter Merken-Toggle darauf löst den Merker).
+    return '<div class="row">'+
+      '<div class="rmain"><div class="rtitle-line"><span class="rtitle">'+title+'</span>'+
+        '<span class="markchip" title="Diese Stelle ist nicht mehr in den aktuellen Daten — gezeigt aus deinem gespeicherten Schnappschuss.">nicht mehr in den Daten</span></div>'+co+'</div>'+
+      '<div class="racts"><button class="rstar on" data-mark="merken" data-id="'+esc(s.id)+'" aria-label="Merker entfernen" title="Merker entfernen">★</button></div>'+
+    '</div>';
+  }
+  function renderMerken(){
+    var items = merkenAll().slice().sort(function(a,b){
+      var ma = state.marks[a.id]||{}, mb = state.marks[b.id]||{};
+      // zuletzt gemerkt oben — die eben angetippte Stelle steht sofort ganz oben.
+      return (mb.ts||0)-(ma.ts||0)
+          || (String(mb.date||"") < String(ma.date||"") ? -1 : String(mb.date||"") > String(ma.date||"") ? 1 : 0);
+    });
+    var stubs = merkenStubs().sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
+    var html = '<div class="view">'+
+      '<div class="pagesub" style="margin-top:16px">Deine Shortlist zum späteren Ansehen — angeheftet mit dem ★ neben „Bewerben" an jeder Stelle. '+
+      'Bleibt hier, bis du den Stern entfernst; auch wenn eine Anzeige später offline geht. Mit „Bewerben" wandert eine Stelle weiter zu den Bewerbungen.</div>';
+    if (!items.length && !stubs.length)
+      return html + '<div class="emptybox">Noch nichts gemerkt — tippe auf den ☆ Stern (neben „Bewerben") an einer Stelle in Start oder Prüfen.</div></div>';
+    if (items.length) html += '<div class="listcard">'+items.map(merkRow).join("")+'</div>';
+    if (stubs.length) html += '<div class="listcard" style="margin-top:12px">'+stubs.map(stubRow).join("")+'</div>';
+    return html + '</div>';
+  }
   function renderOverview(){
     var treffer = visibleIn("treffer").sort(function(a,b){ return b.fit - a.fit; });
     var un = visibleIn("unverif").length;
@@ -1851,6 +1990,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       // auf jeder gezeigten Karte rechts in der Aktionszeile (CSS .aoff = absolut verankert,
       // selbe Position/Höhe überall). Verbucht als closed-user-offline; Rückholweg im Archiv.
       '<div class="pacts-row'+(state.noLive?" hasoff":"")+'">'+
+        starHTML(it)+
         '<button class="btn-act a1" data-mark="bewerben" data-id="'+esc(it.id)+'">Bewerben</button>'+
         '<button class="btn-act a3" data-mark="verworfen" data-id="'+esc(it.id)+'">Verwerfen</button>'+
         '<button class="btn-g" data-details="'+esc(it.id)+'">Details</button>'+
@@ -3721,11 +3861,28 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var host = document.getElementById("viewhost");
     var pv = DOOR_DASH ? portalViewHTML() : "";   // Portal-Untersichten (Vorgang/Opus-Check)
     host.innerHTML = doorBannerHTML() + (pv || (state.view==="overview" ? renderOverview()
+      : state.view==="merken" ? renderMerken()
       : state.view==="pruefseite" ? renderPruefseite()
       : state.view==="bewerbungen" ? renderBewerbungen()
       : state.view==="statuslog" ? renderStatusSeite()
       : renderArchiv()));
     renderExportBar();
+    showSaveWarn();
+  }
+  /* Rotes Warnband, falls saveMarks() eine Merkung NICHT verlässlich sichern konnte
+     (Speicher voll / privater Modus). Der Nutzer erfährt sofort, wenn etwas schiefging —
+     statt einer stillen, verlorenen Markierung (user 2026-07-21). */
+  function showSaveWarn(){
+    var el = document.getElementById("savewarn");
+    if (state.saveErr){
+      if (!el){
+        el = document.createElement("div"); el.id = "savewarn";
+        el.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;background:#b3261e;color:#fff;"+
+          "font:600 12.5px/1.45 system-ui,-apple-system,sans-serif;padding:9px 14px;text-align:center;box-shadow:0 1px 6px rgba(0,0,0,.25)";
+        document.body.appendChild(el);
+      }
+      el.textContent = "⚠ Konnte nicht im Browser gespeichert werden – deine letzte Markierung ist evtl. NICHT gesichert (Speicher voll oder privater Modus?).";
+    } else if (el && el.parentNode){ el.parentNode.removeChild(el); }
   }
 
   function refresh(){
