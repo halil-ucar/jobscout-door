@@ -185,6 +185,9 @@ a{color:inherit;text-decoration:none}
 .sonnetchip{color:#7a5d00;background:#fdf3d7;border:1px solid #ecd9a0}
 /* 🏦 Bank-(Mit-)Eigentümer — deutlicher Vermerk (user GO 2026-07-09), nie ein Ausschluss */
 .bankchip{color:#8a1f1f;background:#fdeaea;border:1px solid #eebcbc}
+/* Gegen-Check-Härtung (user GO 2026-07-25): 2. Meinung ausstehend (amber) / widerlegt (rot) */
+.cpchip{color:#7a4b08;background:#fdf1e0;border:1px solid #ecd0a0}
+.crchip{color:#a11212;background:#fde8e8;border:1px solid #f0b9b9;font-weight:700}
 .sonnetnote{font-size:10px;font-weight:600;color:#7a5d00;background:#fdf3d7;border:1px solid #ecd9a0;
   border-radius:5px;padding:1px 5px;margin-top:4px;white-space:nowrap}
 /* V9 "Grund"-badges (Prüfliste): why an unverified entry is (noch) kein Treffer */
@@ -197,6 +200,8 @@ a{color:inherit;text-decoration:none}
 /* Kombi-Overrides: .whychip steht später im Stylesheet und würde die Farben sonst grau schlagen */
 .whychip.sonnetchip{color:#7a5d00;background:#fdf3d7;border-color:#ecd9a0}
 .whychip.bankchip{color:#8a1f1f;background:#fdeaea;border-color:#eebcbc}
+.whychip.cpchip{color:#7a4b08;background:#fdf1e0;border-color:#ecd0a0}
+.whychip.crchip{color:#a11212;background:#fde8e8;border-color:#f0b9b9}
 /* Chip-Zeile der Prüfen-Karten: unter dem Titel eingerückt (Pille-Breite 44 + Lücke 14) */
 .pcard .whyrow{margin:9px 0 2px 58px}
 /* Automatik-Gesundheit: NUR im Fehlerfall sichtbar (user GO 2026-07-11) — eine Klartext-
@@ -1220,6 +1225,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         // (user GO 2026-07-10; Badge sitzt im Archiv auf dem excluded-Eintrag). Finanzinvestoren
         // jeder Art (VC/PE-Buyout/Family Office): kein Vermerk (user 2026-07-10, "kein Problem").
         bank: !!e.bankOwned,
+        // Gegen-Check-Härtung (user GO 2026-07-25): cp = Treffer ohne gültige 2. Meinung
+        // (Gegen-Check ausgefallen, der nächste Lauf holt nach); cr = strukturierter
+        // Rückzugs-Vermerk (2. Meinung widerlegt das Erst-Urteil -> per Hand neu deepchecken).
+        cp: !!e.counterCheckPending && String(e.status||"").indexOf("included")===0,
+        cr: (e.counterRevoked && typeof e.counterRevoked === "object") ? e.counterRevoked : null,
         bucket: bucket, status: e.status || "",
         run: e.lastChanged || e.firstSeen || "—",
         metaLine: segs.join(" · "),
@@ -1661,6 +1671,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       ? '<span class="newchip" title="In den letzten 3 Tagen neu gefunden">neu</span>' : "";
     var sChip = it.sonnet ? '<span class="markchip sonnetchip" title="Grobe Vorab-Bewertung durch Sonnet (Kurzcheck) — kein Opus-Deep-Check">Bewertung von Sonnet</span>' : "";
     var bChip = it.bank ? '<span class="markchip bankchip" title="'+esc((it.raw&&it.raw.ownershipNote)||"Die Deep-Check-Recherche hat ergeben: eine Bank, Investmentbank, ein Bankenkonsortium oder eine Versicherung ist (Mit-)Eigentümer dieses Arbeitgebers — Ausschlusskriterium (Regel 2026-07-10).")+'">Bank-Eigentümer</span>' : "";
+    // Gegen-Check-Härtung (user GO 2026-07-25): 2. Meinung ausstehend / widerlegt
+    var cpChip = it.cp ? '<span class="markchip cpchip" title="Die adversariale zweite Opus-Meinung (Gegen-Check) ist in diesem Lauf ausgefallen — der Treffer steht auf dem Erst-Urteil und allen harten Gates; der nächste Lauf holt die 2. Meinung automatisch nach.">Treffer ohne 2. Meinung</span>' : "";
+    var crChip = it.cr ? '<span class="markchip crchip" title="'+esc("Nachgeholte 2. Opus-Meinung widerlegt das Erst-Urteil ["+(it.cr.rule||"?")+"]: "+(it.cr.evidence||"ohne Detail")+" — per Hand neu deepchecken (🔍-Knopf auf der Prüfen-Karte).")+'">⚠ War Treffer — 2. Meinung widerlegt</span>' : "";
     var lChip = applogChipHTML(it);
     var open = !!state.open[it.id];
     // Fit fuehrt die Zeile an (user GO 2026-07-11): die Rangzahl ist der Anker, der
@@ -1668,7 +1681,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     return '<div>'+
       '<div class="row">'+
         '<div class="rfit"><div class="n '+fitClass(it.fit)+'">'+it.fit+'</div><div class="l">Fit</div></div>'+
-        mainOpen(it,"rmain")+'<div class="rtitle-line"><span class="rtitle">'+esc(it.title)+"</span>"+nChip+chip+sChip+bChip+lChip+"</div>"+
+        mainOpen(it,"rmain")+'<div class="rtitle-line"><span class="rtitle">'+esc(it.title)+"</span>"+nChip+chip+sChip+bChip+cpChip+crChip+lChip+"</div>"+
           '<div class="rmeta">'+esc(it.metaLine)+"</div>"+mainClose(it)+
         '<div class="racts">'+
           starHTML(it)+
@@ -1917,6 +1930,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // Pille) — die Badges bilden EINE fortlaufende Zeile statt eines Stapel-Turms links.
     if (it.sonnet) why = '<span class="whychip sonnetchip" title="Grobe Vorab-Bewertung durch Sonnet (Kurzcheck) — kein Opus-Deep-Check">Bewertung von Sonnet</span>'+why;
     if (it.bank) why = '<span class="whychip bankchip" title="'+esc((it.raw&&it.raw.ownershipNote)||"")+'">Bank-Eigentümer</span>'+why;
+    // Gegen-Check-Härtung (user GO 2026-07-25): der Rückzugs-Vermerk steht dauerhaft VORNE —
+    // die Stelle war ein Treffer(-Kandidat), die nachgeholte 2. Opus-Meinung hat das
+    // Erst-Urteil widerlegt; der Stichentscheid liegt beim Nutzer (🔍 unten freigeschaltet).
+    if (it.cr) why = '<span class="whychip crchip" title="'+esc("Nachgeholte 2. Opus-Meinung widerlegt das Erst-Urteil ["+(it.cr.rule||"?")+"]: "+(it.cr.evidence||"ohne Detail")+" (Lauf "+(it.cr.run||"?")+", vorher: "+(it.cr.was||"?")+"). Stichentscheid: Anzeigentext in den Opus-Check einwerfen.")+'">⚠ War Treffer — 2. Meinung widerlegt ['+esc(it.cr.rule||"?")+'] — per Hand neu deepchecken</span>'+why;
     // Liveness-Badge (user GO 2026-07-18): manuell geprüfte Karten, deren Anzeige die Maschine
     // strukturell NIE live-beweisen kann (Botwall/NEIN-Host, eigene Bot-Abwehr) — die Frische
     // hängt allein am letzten Blick des Nutzers. Bleibt auch in „Voll geprüft" dauerhaft stehen.
@@ -1971,8 +1988,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (sec==="rest") why += '<span class="whychip sweep">'+esc(sweepChip(it.raw||{}))+"</span>";
     // Manueller Opus-Deep-Check (user GO 2026-07-09): nur für Stellen ohne Opus-Urteil und
     // nur mit konfigurierter Google-Tür; nach Übermittlung zeigt der Stempel den Auftrag an.
+    // AUSNAHME (Gegen-Check-Härtung, user GO 2026-07-25): counterRevoked-Karten tragen zwar
+    // ein Opus-Urteil, aber Erst-Urteil und 2. Meinung widersprechen sich — der 🔍-Weg ist
+    // dort der designierte Stichentscheid und wird freigeschaltet.
     var dcBtn = "";
-    if ((DOOR_DASH || doorGui()) && (it.raw||{}).scoredBy !== "opus-deepcheck"){
+    if ((DOOR_DASH || doorGui()) && ((it.raw||{}).scoredBy !== "opus-deepcheck" || it.cr)){
       dcBtn = ((it.raw||{}).deepcheckRequested || pDcReq[it.id])
         ? '<span class="checkchip" style="margin-top:0" title="Anzeigentext übermittelt — der nächste Lauf macht den vollen Opus-Check">Opus-Check angefordert</span>'
         : (DOOR_DASH
