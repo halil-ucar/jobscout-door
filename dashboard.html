@@ -1472,10 +1472,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (pushTimer){ clearTimeout(pushTimer); pushTimer = null; }
     if (!DOOR_DASH || syncOff || pushing || !doorDataCfg()) return;
     var payload = {};
+    var stamped = false;
     Object.keys(marksDirty).forEach(function(id){
       var rec = state.marks[id];
       if (rec && SYNC_VERBS[rec.mark]){
-        payload[id] = { m: rec.mark, ts: rec.ts || Date.now(), date: rec.date || "" };
+        // Alt-Marken (vor 2026-07-21) tragen keinen ts — hier nachstempeln und SPEICHERN,
+        // sonst könnte das Abhaken nach der Antwort nie greifen (Endlos-Re-Push).
+        if (!rec.ts){ rec.ts = Date.now(); stamped = true; }
+        payload[id] = { m: rec.mark, ts: rec.ts, date: rec.date || "" };
         if (rec.snap) payload[id].snap = rec.snap;
       } else if (marksTomb[id]){
         payload[id] = { m: null, ts: marksTomb[id] };
@@ -1484,6 +1488,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       }
     });
     saveSyncMap(DIRTY_KEY, marksDirty);
+    if (stamped) saveMarks();
     if (!Object.keys(payload).length) return;
     pushing = true;
     doorPost({ action:"marks-set", marks: payload })
@@ -1538,11 +1543,29 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     });
     if (changedAny){ saveMarks(); renderAll(); }
   }
+  /* Bestands-Backfill (user 2026-07-25, „nur Dr. Spang kam an"): Marken von VOR dem
+     Sync waren nie dirty und erreichten den Server daher nie. Nach jedem Pull werden
+     deshalb alle lokalen Sync-Marken nachgeschoben, die der Server nicht kennt — oder
+     nur mit älterem ts (auch ein ÄLTERER Server-Tombstone verliert per LWW gegen eine
+     neuere lokale Marke). Kein Ping-Pong: gleicher ts => kein Re-Push. */
+  function backfillMarks(srv){
+    var added = false;
+    Object.keys(state.marks).forEach(function(id){
+      var rec = state.marks[id];
+      if (!rec || !SYNC_VERBS[rec.mark] || marksDirty[id]) return;
+      var s = srv[id];
+      if (!s || (Number(s.ts)||0) < (rec.ts||0)){ marksDirty[id] = 1; added = true; }
+    });
+    if (added) saveSyncMap(DIRTY_KEY, marksDirty);
+    return added;
+  }
   function pullMarks(){
     if (!DOOR_DASH || syncOff) return;
     doorPost({ action:"marks-get" })
       .then(function(j){
-        mergeServerMarks((j && j.marks) || {});
+        var srv = (j && j.marks) || {};
+        mergeServerMarks(srv);
+        backfillMarks(srv);
         if (Object.keys(marksDirty).length) pushMarks();
       })
       .catch(function(err){
