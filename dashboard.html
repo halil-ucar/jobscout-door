@@ -1434,6 +1434,122 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (!ok) queueDoorActs(acts);
     return ok;
   }
+  /* Marks-Sync über die Tür (user GO 2026-07-25, NEXT.md): die LOKALEN Marken
+     merken/bewerben/ueberlegen wandern über door.gs in eine Drive-Datei
+     (personal-marks.json, Script-Property PERSONAL_MARKS_FILE_ID), damit Handy und
+     MacBook denselben Stand zeigen. NUR im Tür-Dashboard aktiv (DOOR_DASH) — das
+     claude.ai-Artefakt bleibt rein lokal (Code hier inert). Konfliktregel:
+     last-write-wins je id per ts; Gleichstand -> Server gewinnt; eine lokale FINALE
+     Marke überstimmt jede Sync-Marke. Entfernen reist als Tombstone (m:null), damit
+     ein Entsternen auf Gerät A nicht vom Pull auf Gerät B wiederbelebt wird.
+     Fehlversand bleibt lokal (dirty-Map) und wird beim nächsten Laden/Flush
+     nachgeschoben — sichtbar an der Sende-Pille, nie stiller Verlust. */
+  var SYNC_VERBS = { merken:1, bewerben:1, ueberlegen:1 };
+  var DIRTY_KEY = "jobscout-marks-dirty", TOMB_KEY = "jobscout-marks-tomb";
+  function syncMap(key){ try{ return JSON.parse(localStorage.getItem(key)||"{}")||{}; }catch(e){ return {}; } }
+  function saveSyncMap(key, m){ try{ localStorage.setItem(key, JSON.stringify(m)); }catch(e){} }
+  var marksDirty = syncMap(DIRTY_KEY), marksTomb = syncMap(TOMB_KEY);
+  var syncOff = false, syncFailed = false, pushTimer = null, pushing = false;
+  function syncDead(err){
+    // alte Tür (noch ohne marks-Actions) oder fehlende File-Property: Sync für diese
+    // Sitzung still aus — heutiges localStorage-Verhalten, nie eine Fehler-Pille.
+    var m = err && err.message;
+    if (m === "unconfigured-marks" || m === "unknown-action"){ syncOff = true; return true; }
+    return false;
+  }
+  function markDirty(id, removed){
+    if (removed) marksTomb[id] = Date.now(); else delete marksTomb[id];
+    marksDirty[id] = 1;
+    saveSyncMap(DIRTY_KEY, marksDirty); saveSyncMap(TOMB_KEY, marksTomb);
+    schedulePushMarks();
+  }
+  function schedulePushMarks(){
+    if (!DOOR_DASH || syncOff) return;
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushMarks, 1500);   // Debounce: bleibt weit unter dem 30/min-Rate-Limit
+  }
+  function pushMarks(){
+    if (pushTimer){ clearTimeout(pushTimer); pushTimer = null; }
+    if (!DOOR_DASH || syncOff || pushing || !doorDataCfg()) return;
+    var payload = {};
+    Object.keys(marksDirty).forEach(function(id){
+      var rec = state.marks[id];
+      if (rec && SYNC_VERBS[rec.mark]){
+        payload[id] = { m: rec.mark, ts: rec.ts || Date.now(), date: rec.date || "" };
+        if (rec.snap) payload[id].snap = rec.snap;
+      } else if (marksTomb[id]){
+        payload[id] = { m: null, ts: marksTomb[id] };
+      } else {
+        delete marksDirty[id];   // weder Sync-Marke noch Tombstone (z. B. final geworden)
+      }
+    });
+    saveSyncMap(DIRTY_KEY, marksDirty);
+    if (!Object.keys(payload).length) return;
+    pushing = true;
+    doorPost({ action:"marks-set", marks: payload })
+      .then(function(j){
+        pushing = false; syncFailed = false;
+        // nur unverändert Gesendetes abhaken — eine Marke, die WÄHREND des Flugs neu
+        // getippt wurde (anderer ts), bleibt dirty und geht mit dem nächsten Push raus.
+        Object.keys(payload).forEach(function(id){
+          var sent = payload[id], rec = state.marks[id];
+          var cur = (rec && SYNC_VERBS[rec.mark]) ? rec.ts : (marksTomb[id] || null);
+          if (cur === sent.ts){ delete marksDirty[id]; if (sent.m === null) delete marksTomb[id]; }
+        });
+        saveSyncMap(DIRTY_KEY, marksDirty); saveSyncMap(TOMB_KEY, marksTomb);
+        mergeServerMarks((j && j.marks) || {});   // Demo/alte Antwort: fehlendes Feld = {}
+        if (Object.keys(marksDirty).length) schedulePushMarks();
+        renderExportBar();
+      })
+      .catch(function(err){
+        pushing = false;
+        if (syncDead(err)) return;
+        syncFailed = true;         // dirty bleibt stehen -> Retry beim nächsten Laden/Flush
+        renderExportBar();
+      });
+  }
+  /* Pull: Server-Stand einarbeiten. Übersprungen werden ids mit ungepushter lokaler
+     Änderung (dirty) und ids mit lokaler FINALER Marke (beworben/verworfen/… gewinnen
+     immer). Server-Tombstone löscht die lokale Sync-Marke nur, wenn sie nicht neuer ist. */
+  function mergeServerMarks(srv){
+    if (!DOOR_DASH || !srv) return;
+    var changedAny = false;
+    Object.keys(srv).forEach(function(id){
+      if (marksDirty[id]) return;
+      var s = srv[id] || {};
+      var sTs = Number(s.ts) || 0;
+      var loc = state.marks[id];
+      if (loc && !SYNC_VERBS[loc.mark]) return;
+      if (s.m === null){
+        if (loc && (Number(loc.ts)||0) <= sTs){ delete state.marks[id]; changedAny = true; }
+        return;
+      }
+      if (!SYNC_VERBS[s.m]) return;   // unbekanntes Verb: nie raten
+      if (!loc || (Number(loc.ts)||0) < sTs){
+        var rec = { mark: s.m, date: String(s.date||"").slice(0,10), ts: sTs };
+        if (s.snap && typeof s.snap === "object"){
+          var su = String(s.snap.u||"");
+          rec.snap = { t: String(s.snap.t||"").slice(0,160), c: String(s.snap.c||"").slice(0,160),
+                       u: /^https?:\/\//.test(su) ? su.slice(0,600) : "" };
+        }
+        state.marks[id] = rec;
+        changedAny = true;
+      }
+    });
+    if (changedAny){ saveMarks(); renderAll(); }
+  }
+  function pullMarks(){
+    if (!DOOR_DASH || syncOff) return;
+    doorPost({ action:"marks-get" })
+      .then(function(j){
+        mergeServerMarks((j && j.marks) || {});
+        if (Object.keys(marksDirty).length) pushMarks();
+      })
+      .catch(function(err){
+        if (syncDead(err)) return;
+        if (Object.keys(marksDirty).length) pushMarks();   // Push trotzdem versuchen
+      });
+  }
   function setMark(id, mark){
     var cur = state.marks[id];
     var today = new Date().toISOString().slice(0,10);
@@ -1441,14 +1557,17 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       delete state.marks[id];
       // Rücknahme: entfernt das noch UNVERARBEITETE Zwilling-Paket aus der Drive-Datei
       if (DOOR_VERBS[mark]) doorShip([{ id:id, action:DOOR_VERBS[mark], date:today, undo:true }]);
+      if (DOOR_DASH && SYNC_VERBS[mark]) markDirty(id, true);   // Tombstone: Entsternen syncen
     } else {
       var rec = { mark: mark, date: today, ts: Date.now() };
-      // "Merken" (user 2026-07-21): rein LOKALER Stern — NICHT in DOOR_VERBS, wandert also nie
-      // an die Tür. Ein Schnappschuss (Titel/Firma/Link) reist als letzte Rückfall-Sicherung
+      // "Merken" (user 2026-07-21): lokaler Stern — NICHT in DOOR_VERBS, wandert also nie als
+      // Aktion an den Scout (seit 2026-07-25 aber als Sync-Marke an personal-marks.json).
+      // Ein Schnappschuss (Titel/Firma/Link) reist als letzte Rückfall-Sicherung
       // mit, falls die Stelle irgendwann ganz aus den Daten fällt (bleibt dann als Zeile).
       if (mark === "merken"){ var itx = itemById(id); if (itx) rec.snap = { t: itx.title||"", c: itx.company||"", u: itx.url||"" }; }
       state.marks[id] = rec;
       if (DOOR_VERBS[mark]) doorShip([{ id:id, action:DOOR_VERBS[mark], date:today }]);
+      if (DOOR_DASH && SYNC_VERBS[mark]) markDirty(id, false);
     }
     saveMarks(); renderAll();
   }
@@ -3841,10 +3960,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       // wenn ein Versand scheiterte, und ist dann ein „erneut senden"-Knopf.
       bar.hidden = true;
       var obd = doorOutbox();
-      pill.innerHTML = obd.length && !obFlushing
+      // Sync-Marken (Stern/Vormerkung) zählen NUR nach einem Fehlversand mit — nie
+      // während des normalen Debounce/Flugs (sonst blitzte die Pille bei jedem Tipp).
+      var syncN = (syncFailed && !syncOff) ? Object.keys(marksDirty).length : 0;
+      var pend = obd.length + syncN;
+      pill.innerHTML = pend && !obFlushing && !pushing
         ? '<a class="sendpill" href="#" data-obretry'+
           ' title="Der Versand an die Tür hat nicht geklappt (offline?). Antippen sendet alles erneut — ohne Datenverlust, doppelt gesendete Markierungen sind harmlos.">'+
-          '📤 <b>'+obd.length+'</b> nicht gesendet — erneut senden</a>'
+          '📤 <b>'+pend+'</b> nicht gesendet — erneut senden</a>'
         : "";
       return;
     }
@@ -3920,7 +4043,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (r.data){ state.items = enrich(r.data.seen); state.meta = r.data.meta || {}; buildRunOrder(); }
       state.source = r.source; state.loadedAt = new Date();
       state.doorErr = r.doorErr || null; state.cachedAt = r.cachedAt || state.cachedAt || null;
-      if (DOOR_DASH && r.source === "door") flushDoorOutbox();
+      // Nach jedem ERFOLGREICHEN frischen Datenabruf (nie auf Cache): Outbox-Nachversand
+      // + Marks-Sync-Pull (nicht-blockierend; zieht danach ausstehende dirty-Pushes nach).
+      if (DOOR_DASH && r.source === "door"){ flushDoorOutbox(); pullMarks(); }
       renderAll();
     });
   }
@@ -4061,7 +4186,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (e.target.closest("[data-obclear]")){ saveDoorOutbox([]); setTimeout(renderAll, 80); }
     // Tür-Dashboard: Pille = Nachversand-Knopf (stilles fetch-Retry, keine Navigation)
     var obr = e.target.closest("[data-obretry]");
-    if (obr){ e.preventDefault(); flushDoorOutbox(); return; }
+    if (obr){ e.preventDefault(); flushDoorOutbox(); pushMarks(); return; }
     // Störungs-Banner: „Erneut versuchen" lädt die Tür-Daten neu
     var drt = e.target.closest("[data-doorretry]");
     if (drt){ e.preventDefault(); refresh(); return; }
