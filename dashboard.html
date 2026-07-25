@@ -1450,6 +1450,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   function saveSyncMap(key, m){ try{ localStorage.setItem(key, JSON.stringify(m)); }catch(e){} }
   var marksDirty = syncMap(DIRTY_KEY), marksTomb = syncMap(TOMB_KEY);
   var syncOff = false, syncFailed = false, pushTimer = null, pushing = false;
+  // Von der Tür VERWORFENE ids (Validierung, z. B. überlange Kennung): sitzungsweit
+  // geparkt, damit kein 1,5-s-Retry-Loop entsteht; bleiben dirty + auf der Pille
+  // sichtbar. Neuer Versuch: Pillen-Tipp oder Neuladen (der Hellmann/imos-Fall).
+  var syncSkipped = {};
   function syncDead(err){
     // alte Tür (noch ohne marks-Actions) oder fehlende File-Property: Sync für diese
     // Sitzung still aus — heutiges localStorage-Verhalten, nie eine Fehler-Pille.
@@ -1474,6 +1478,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var payload = {};
     var stamped = false;
     Object.keys(marksDirty).forEach(function(id){
+      if (syncSkipped[id]) return;   // von der Tür verworfen — erst Pillen-Tipp/Neuladen
       var rec = state.marks[id];
       if (rec && SYNC_VERBS[rec.mark]){
         // Alt-Marken (vor 2026-07-21) tragen keinen ts — hier nachstempeln und SPEICHERN,
@@ -1494,12 +1499,20 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     doorPost({ action:"marks-set", marks: payload })
       .then(function(j){
         pushing = false; syncFailed = false;
+        var srvMap = (j && j.marks) || null;   // volle Server-Karte; Demo/Altantwort: null
         // nur unverändert Gesendetes abhaken — eine Marke, die WÄHREND des Flugs neu
         // getippt wurde (anderer ts), bleibt dirty und geht mit dem nächsten Push raus.
         Object.keys(payload).forEach(function(id){
           var sent = payload[id], rec = state.marks[id];
           var cur = (rec && SYNC_VERBS[rec.mark]) ? rec.ts : (marksTomb[id] || null);
-          if (cur === sent.ts){ delete marksDirty[id]; if (sent.m === null) delete marksTomb[id]; }
+          if (cur !== sent.ts) return;
+          // Bestätigungs-Check (Hellmann/imos-Fall 2026-07-25): eine gesendete MARKE muss
+          // in der zurückgegebenen Karte stehen — fehlt sie, hat die Tür sie VERWORFEN
+          // (Validierung). Dann sichtbar parken statt still abhaken. Tombstones dürfen
+          // auch fehlen (Alterung räumt sie serverseitig weg).
+          if (srvMap && sent.m !== null && !srvMap[id]){ syncSkipped[id] = 1; syncFailed = true; return; }
+          delete marksDirty[id];
+          if (sent.m === null) delete marksTomb[id];
         });
         saveSyncMap(DIRTY_KEY, marksDirty); saveSyncMap(TOMB_KEY, marksTomb);
         mergeServerMarks((j && j.marks) || {});   // Demo/alte Antwort: fehlendes Feld = {}
@@ -1535,7 +1548,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         if (s.snap && typeof s.snap === "object"){
           var su = String(s.snap.u||"");
           rec.snap = { t: String(s.snap.t||"").slice(0,160), c: String(s.snap.c||"").slice(0,160),
-                       u: /^https?:\/\//.test(su) ? su.slice(0,600) : "" };
+                       u: /^https?:\/\//.test(su) ? su.slice(0,2000) : "" };
         }
         state.marks[id] = rec;
         changedAny = true;
@@ -4209,7 +4222,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (e.target.closest("[data-obclear]")){ saveDoorOutbox([]); setTimeout(renderAll, 80); }
     // Tür-Dashboard: Pille = Nachversand-Knopf (stilles fetch-Retry, keine Navigation)
     var obr = e.target.closest("[data-obretry]");
-    if (obr){ e.preventDefault(); flushDoorOutbox(); pushMarks(); return; }
+    if (obr){ e.preventDefault(); flushDoorOutbox(); syncSkipped = {}; pushMarks(); return; }
     // Störungs-Banner: „Erneut versuchen" lädt die Tür-Daten neu
     var drt = e.target.closest("[data-doorretry]");
     if (drt){ e.preventDefault(); refresh(); return; }
