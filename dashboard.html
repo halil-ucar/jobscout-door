@@ -2160,7 +2160,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // dort der designierte Stichentscheid und wird freigeschaltet.
     var dcBtn = "";
     if ((DOOR_DASH || doorGui()) && ((it.raw||{}).scoredBy !== "opus-deepcheck" || it.cr)){
-      dcBtn = ((it.raw||{}).deepcheckRequested || pDcReq[it.id])
+      dcBtn = (((it.raw||{}).deepcheckRequested && !dcoStale(it.raw||{})) || pDcReq[it.id])
         ? '<span class="checkchip" style="margin-top:0" title="Anzeigentext übermittelt — der nächste Lauf macht den vollen Opus-Check">Opus-Check angefordert</span>'
         : (DOOR_DASH
           ? '<button class="btn-g" data-pdc=\''+esc(JSON.stringify({ id:it.id, company:it.company||"", title:it.title||"", url:it.url||it.id||"" }))+'\' title="Anzeigentext hier einfügen — der nächste Lauf macht den vollen Opus-Deep-Check (Botwall-Stellen)">Opus-Check</button>'
@@ -2229,7 +2229,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (DOOR_DASH || doorGui()){
       var dcbCands = g.nachsehen.filter(function(it){
         var r = it.raw || {};
-        return r.scoredBy !== "opus-deepcheck" && !r.deepcheckRequested && !pDcReq[it.id];
+        return r.scoredBy !== "opus-deepcheck" && !(r.deepcheckRequested && !dcoStale(r)) && !pDcReq[it.id];
       }).slice(0, 80).map(function(it){
         return { id: it.id, company: it.company||"", title: it.title||"", url: it.url||it.id||"", fit: it.fit };
       });
@@ -2950,6 +2950,16 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   function dcoDate(runId){ return String(runId||"").slice(0,10); }
   (function(){ try{ var m = dcoLoad(); Object.keys(m).forEach(function(id){
     if (!(m[id]||{}).hide) pDcReq[id] = true; }); }catch(e){} })();
+  // Hängender Check (2026-07-26, die imos-Lektion): Stempel >= 2 Tage alt und KEIN
+  // Opus-Urteil = die gebuchte Prüfung ist mit ihrem Container gestorben (die Text-Spool
+  // ist lokal und git-ignoriert). Der 🔍-Knopf kommt dann WIEDER (statt ewig „angefordert"
+  // zu zeigen), und eine Neu-Sendung bucht serverseitig als Neulieferung
+  // (apply_user_actions: _redelivery — neueres Datum + Text schlägt den Alt-Stempel).
+  function dcoStale(e){
+    var d = dcoDate((e||{}).deepcheckRequested);
+    return !!d && (e||{}).scoredBy !== "opus-deepcheck"
+        && dcoDays(d, new Date().toISOString().slice(0,10)) >= 2;
+  }
   function dcoItemFor(id, o){
     var it = itemById(String(id)); if (it) return it;
     var co = coCanon(o.co||""); if (!co.length) return null;
@@ -2980,6 +2990,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (st === "sent" && o.ts && dcoDays(o.ts, today) > 21){ delete m[id]; changed = true; return; }
       if (it) covered[it.id] = 1;
       rows.push({ id: id, st: st, ts: o.ts||"", it: it||null,
+                  stale: st==="booked" && !!it && dcoStale(it.raw||{}),
                   co: (it&&it.company)||o.co||hostOfUrl(id)||"—", ti: (it&&it.title)||o.ti||"" });
     });
     // Daten-Stempel ohne lokalen Eintrag (anderes Gerät / Bestellung vor diesem Feature):
@@ -2988,7 +2999,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var e = x.raw||{};
       if (!e.deepcheckRequested || covered[x.id] || (m[x.id]||{}).hide) return;
       if (e.scoredBy !== "opus-deepcheck" && x.bucket === "unverif")
-        rows.push({ id: x.id, st: "booked", ts: dcoDate(e.deepcheckRequested), it: x, co: x.company, ti: x.title });
+        rows.push({ id: x.id, st: "booked", ts: dcoDate(e.deepcheckRequested), it: x,
+                    stale: dcoStale(e), co: x.company, ti: x.title });
       else if (e.scoredBy === "opus-deepcheck" && dcoDate(e.lastChanged) >= dcoDate(e.deepcheckRequested)
                && dcoDays(dcoDate(e.lastChanged), today) <= 7)
         rows.push({ id: x.id, st: "done", ts: dcoDate(e.deepcheckRequested), it: x, co: x.company, ti: x.title });
@@ -3007,9 +3019,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
                excluded: "Aussortiert (Archiv)", verworfen: "Verworfen", offline: "Offline" };
     var h = '<div class="dcst"><div class="dcst-h">Prüf-Status <span class="c">'+rows.length+'</span></div>';
     rows.forEach(function(r){
-      var c = CH[r.st];
+      var c = r.stale ? ["⚠️","Hängt",""] : CH[r.st];
       var sub = c[1] + (r.ts ? " · bestellt " + esc(r.ts) : "");
-      if (r.st === "done" && r.it)
+      if (r.stale)
+        sub += " — Prüfung nie fertig geworden; Anzeigentext bitte erneut über den 🔍-Knopf senden";
+      else if (r.st === "done" && r.it)
         sub += " · Fit " + r.it.fit + " → " + (BL[r.it.bucket] || r.it.bucket);
       else sub += " — " + c[2];
       h += '<div class="dcst-row"><span class="dcst-ic">'+c[0]+'</span>'+
