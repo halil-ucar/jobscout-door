@@ -3,6 +3,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Job Scout</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='7.7' fill='%23191B1D'/%3E%3Cg transform='translate(5.16 5.16) scale(0.57)' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='8.2' opacity='.5'/%3E%3Ccircle cx='12' cy='12' r='3.3'/%3E%3Cline x1='12' y1='12' x2='18.6' y2='6.8'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 /* ============================================================
    AI Job Scout — design "Graphit" (user 2026-07-11; evolved from
@@ -277,7 +278,7 @@ a{color:inherit;text-decoration:none}
 .rfit .n.fitc-m{background:var(--amber-bg);border-color:var(--amber-line)}
 .rfit .n.fitc-l{background:var(--red-bg);border-color:var(--red-line)}
 .rfit .l{display:none}
-/* Merken-Stern (user 2026-07-21): in der Aktionszeile, links vom „Bewerben"-Knopf.
+/* Merken-Stern (user 2026-07-21): in der Aktionszeile, links vom „Bewerben“-Knopf.
    Ruhezustand dezent grau (☆), gemerkt schwarz gefüllt (★) — bei 40+ Zeilen scannbar. */
 .rstar{flex:none;width:30px;height:34px;padding:0;border:0;background:none;cursor:pointer;
   font-size:19px;line-height:1;color:var(--mut2);border-radius:8px;
@@ -586,7 +587,7 @@ a{color:inherit;text-decoration:none}
 .btn-act.a2:hover{border-color:var(--ink)}
 .btn-act.a3{color:var(--meta);background:transparent;border:1px solid transparent}
 .btn-act.a3:hover{color:var(--red);background:var(--red-bg)}
-/* „Offline"-Endmarke (nur im „Ohne Live-Beweis"-Filter): absolut rechts in der Aktionszeile
+/* „Offline“-Endmarke (nur im „Ohne Live-Beweis“-Filter): absolut rechts in der Aktionszeile
    verankert — sitzt dadurch auf JEDER Karte an derselben Stelle und Höhe, egal ob ein
    Opus-Check-Knopf da ist oder die übrigen Knöpfe umbrechen (user GO 2026-07-18). */
 .pacts-row.hasoff{position:relative;padding-right:88px}
@@ -711,7 +712,7 @@ a{color:inherit;text-decoration:none}
   border:1px solid var(--b09);border-radius:8px;padding:8px;background:var(--panel);
   display:none;resize:vertical}
 .exportout.show{display:block}
-/* Sende-Pille (user 2026-07-11, „Balken ein für alle Mal raus"): mit konfigurierter Tür
+/* Sende-Pille (user 2026-07-11, „Balken ein für alle Mal raus“): mit konfigurierter Tür
    ersetzt sie den Klebebalken komplett. Sie erscheint NUR, wenn geparkte Tür-Pakete
    warten (die Artefakt-Sandbox verschluckt window.open, Markierungen sammeln sich in
    der Outbox) — EIN Antippen verschifft alles zusammen. Ohne Tür bleibt der alte Balken. */
@@ -804,14 +805,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   <!-- Export-Balken gekürzt (user GO 2026-07-11): eine Zeile + Knopf; die Erklärung lebt im
        Tooltip und erscheint sichtbar erst MIT dem JSON-Kästchen (wenn man sie braucht).
        MIT konfigurierter Tür bleibt der Balken DAUERHAFT versteckt (user 2026-07-11,
-       „ein für alle Mal raus"): jedes Antippen verschifft selbst über die Tür; nur im
+       „ein für alle Mal raus“): jedes Antippen verschifft selbst über die Tür; nur im
        Sandbox geparkte Pakete brauchen noch EINEN Tipp auf die Sende-Pille (#sendpill). -->
   <div class="exportbar" id="exportbar" hidden>
     <span class="info" id="exportinfo" title="Bereits beworben / Verworfen / Geprüft: das kopierte JSON Claude geben („Übernimm diese Markierungen“) oder in die user-actions.json in Google Drive einfügen — der nächste Lauf verbucht die Markierungen dauerhaft. „Bewerben“ bleibt lokal, bis du „Bereits beworben“ tippst."></span>
     <span id="doorob"></span>
     <button class="btn-export" id="exportbtn">An den Scout übergeben</button>
     <textarea class="exportout" id="exportout" readonly spellcheck="false" aria-label="Aktions-JSON"></textarea>
-    <span class="exporthint">An Claude geben („Übernimm diese Markierungen") oder in die
+    <span class="exporthint">An Claude geben („Übernimm diese Markierungen“) oder in die
       <code>user-actions.json</code> in Google Drive einfügen — der nächste Lauf verbucht sie dauerhaft.</span>
   </div>
   <div id="sendpill"></div>
@@ -1226,7 +1227,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         raw: e, id: idOf(e) || ("row-"+i), url: e.url || "",
         // Manuell eingereichte Neue-Stelle-Einträge dürfen ohne Identität ankommen (user GO
         // 2026-07-18 #2) — bis der Opus-Check sie aus dem Text bestimmt, zeigt die Karte den
-        // Host + einen ehrlichen Platzhalter statt „Unbekannt/Ohne Titel".
+        // Host + einen ehrlichen Platzhalter statt „Unbekannt/Ohne Titel“.
         company: e.company || (e.source === "manual-user" && e.url ? hostOfUrl(e.url) : "") || "Unbekannt",
         title: e.title || (e.source === "manual-user" ? "Neue Stelle — Titel folgt aus dem Opus-Check" : "Ohne Titel"),
         fit: Math.max(0, Math.min(100, Math.round(Number(e.fitScore)||0))),
@@ -1375,7 +1376,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   /* Sandbox-Fallback (2026-07-10): die claude.ai-Artefakt-Sandbox verschluckt window.open
      LAUTLOS (derselbe Handler läuft in normalem Chromium — gemessen). Fehlgeschlagene
      Sendungen parken deshalb in einer Dashboard-Outbox; die Export-Leiste zeigt dann einen
-     ECHTEN Link „an die Tür senden" (Link-Navigation funktioniert in der Sandbox — der
+     ECHTEN Link „an die Tür senden“ (Link-Navigation funktioniert in der Sandbox — der
      📨-Paket-Knopf beweist es). Gleiche Undo/Dedup-Semantik wie die Outbox der Tür-GUI. */
   var DOOR_OB_KEY = "jobscout-door-outbox";
   function doorOutbox(){ try{ return JSON.parse(localStorage.getItem(DOOR_OB_KEY)||"[]")||[]; }catch(e){ return []; } }
@@ -1403,7 +1404,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      Bestätigung: jede Markierung wird erst eingereiht, dann geflusht; erst die
      ok-Antwort entfernt genau die gesendeten Pakete. Scheitert der Versand (offline,
      Google-Schluckauf), bleibt alles liegen und die Sende-Pille wird zum
-     „erneut senden"-Knopf; zusätzlich versucht es jeder erfolgreiche Datenabruf
+     „erneut senden“-Knopf; zusätzlich versucht es jeder erfolgreiche Datenabruf
      automatisch nochmal. Replays sind idempotent (door.gs dedupt Zwillinge). */
   function doorPost(obj){
     if (typeof window!=="undefined" && window.__DOOR_DEMO__)
@@ -1569,7 +1570,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     });
     if (changedAny){ saveMarks(); renderAll(); }
   }
-  /* Bestands-Backfill (user 2026-07-25, „nur Dr. Spang kam an"): Marken von VOR dem
+  /* Bestands-Backfill (user 2026-07-25, „nur Dr. Spang kam an“): Marken von VOR dem
      Sync waren nie dirty und erreichten den Server daher nie. Nach jedem Pull werden
      deshalb alle lokalen Sync-Marken nachgeschoben, die der Server nicht kennt — oder
      nur mit älterem ts (auch ein ÄLTERER Server-Tombstone verliert per LWW gegen eine
@@ -1629,7 +1630,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var removed = false;
     Object.keys(state.marks).forEach(function(id){
       if (known[id]) return;
-      // „Merken" ist KLEBRIG (user 2026-07-21): nie automatisch entfernen — der Stern bleibt,
+      // „Merken“ ist KLEBRIG (user 2026-07-21): nie automatisch entfernen — der Stern bleibt,
       // bis der Nutzer ihn selbst löst, auch wenn die Stelle offline/aussortiert ist (der
       // Merken-Reiter zeigt sie dann mit Vermerk; sie darf nie STILL verschwinden).
       if (state.marks[id] && state.marks[id].mark === "merken") return;
@@ -1670,7 +1671,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (!state.items.length) return [];
     // Abdeckung aus ALLEN geladenen Einträgen (nicht nur merkenAll): sonst erschiene ein Eintrag,
     // der inzwischen appliedSrv ist (aus merkenAll gefiltert), fälschlich als „nicht mehr in den
-    // Daten"-Stub, obwohl er da ist. Ein Stub entsteht nur, wenn die gemerkte id in KEINEM
+    // Daten“-Stub, obwohl er da ist. Ein Stub entsteht nur, wenn die gemerkte id in KEINEM
     // state.items-Eintrag (per id oder supersededUrls-Alias) mehr vorkommt.
     var present = {};
     state.items.forEach(function(it){
@@ -1694,7 +1695,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       excluded: state.items.filter(function(it){ return it.bucket==="excluded"; }).length,
       bew: bew, beworben: bwn, verworfen: verw,
       pruef: visibleIn("unverif").length,
-      merken: merkenAll().length + merkenStubs().length,   // Tab-Zähler „Merken" (user 2026-07-21)
+      merken: merkenAll().length + merkenStubs().length,   // Tab-Zähler „Merken“ (user 2026-07-21)
       bewq: bew,   // Tab-Zähler Bewerbungen = Vorgemerkt (Redesign 2026-07-10)
       applog: (((applogData()||{}).entries)||[]).length   // Tab "Status" = Log-Einträge
     };
@@ -1715,8 +1716,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   /* ---------------- renderers ---------------- */
   /* 4 Tabs seit dem Redesign 2026-07-10 (user GO): Verworfen lebt als Archiv-Abschnitt,
      die Merkliste als Block "Vorgemerkt" im Bewerbungen-Tab.
-     + Reiter „Merken" (user 2026-07-21): lokale Shortlist per schwarzem Stern; seit
-     2026-07-21 #3 NACH Prüfen (Reihenfolge Start · Prüfen · Merken · …). Zähler „merken". */
+     + Reiter „Merken“ (user 2026-07-21): lokale Shortlist per schwarzem Stern; seit
+     2026-07-21 #3 NACH Prüfen (Reihenfolge Start · Prüfen · Merken · …). Zähler „merken“. */
   var VIEWS = [
     { key:"overview",  label:"Start",       cnt:"treffer" },
     { key:"pruefseite",label:"Prüfen",      cnt:"pruef" },
@@ -1819,10 +1820,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       link+"</div>";
   }
 
-  /* Merken-Stern (user 2026-07-21): in der Aktionszeile, links vom „Bewerben"-Knopf (die
+  /* Merken-Stern (user 2026-07-21): in der Aktionszeile, links vom „Bewerben“-Knopf (die
      linke Score-Spalte blieb dem Fit vorbehalten — user 2026-07-21 #2). ☆ = nicht gemerkt,
      ★ = gemerkt (schwarz). Toggle über die normale setMark-Maschine mit
-     dem LOKALEN Mark „merken" (nicht in DOOR_VERBS → bleibt im Browser, geht sofort, bleibt). */
+     dem LOKALEN Mark „merken“ (nicht in DOOR_VERBS → bleibt im Browser, geht sofort, bleibt). */
   function starHTML(it){
     var on = directMark(it) === "merken";
     return '<button class="rstar'+(on?" on":"")+'" data-mark="merken" data-id="'+esc(it.id)+'"'+
@@ -1992,10 +1993,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     });
     var stubs = merkenStubs().sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
     var html = '<div class="view">'+
-      '<div class="pagesub" style="margin-top:16px">Deine Shortlist zum späteren Ansehen — angeheftet mit dem ★ neben „Bewerben" an jeder Stelle. '+
-      'Bleibt hier, bis du den Stern entfernst; auch wenn eine Anzeige später offline geht. Mit „Bewerben" wandert eine Stelle weiter zu den Bewerbungen.</div>';
+      '<div class="pagesub" style="margin-top:16px">Deine Shortlist zum späteren Ansehen — angeheftet mit dem ★ neben „Bewerben“ an jeder Stelle. '+
+      'Bleibt hier, bis du den Stern entfernst; auch wenn eine Anzeige später offline geht. Mit „Bewerben“ wandert eine Stelle weiter zu den Bewerbungen.</div>';
     if (!items.length && !stubs.length)
-      return html + '<div class="emptybox">Noch nichts gemerkt — tippe auf den ☆ Stern (neben „Bewerben") an einer Stelle in Start oder Prüfen.</div></div>';
+      return html + '<div class="emptybox">Noch nichts gemerkt — tippe auf den ☆ Stern (neben „Bewerben“) an einer Stelle in Start oder Prüfen.</div></div>';
     if (items.length) html += '<div class="listcard">'+items.map(merkRow).join("")+'</div>';
     if (stubs.length) html += '<div class="listcard" style="margin-top:12px">'+stubs.map(stubRow).join("")+'</div>';
     return html + '</div>';
@@ -2051,7 +2052,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<div class="hstat"><div class="num">'+neu+'</div><div class="lbl">Neu — 3 Tage</div></div>'+
         chart+
       '</div>'+
-      '<div class="pagesub">Bestätigte Stellen, nach Fit sortiert. Funde der letzten 3 Tage tragen „neu".</div>';
+      '<div class="pagesub">Bestätigte Stellen, nach Fit sortiert. Funde der letzten 3 Tage tragen „neu“.</div>';
     if (!treffer.length) html += '<div class="emptybox">Kein offener Treffer — alles markiert oder archiviert.</div>';
     else html += '<div class="listcard">'+treffer.map(rowHTML).join("")+'</div>';
     if (un) html += '<button class="pruefrow" data-nav="pruefseite">'+un+' unverifizierte Stellen warten in der Prüfliste</button>';
@@ -2104,7 +2105,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (it.cr) why = '<span class="whychip crchip" title="'+esc("Nachgeholte 2. Opus-Meinung widerlegt das Erst-Urteil ["+(it.cr.rule||"?")+"]: "+(it.cr.evidence||"ohne Detail")+" (Lauf "+(it.cr.run||"?")+", vorher: "+(it.cr.was||"?")+"). Stichentscheid: Anzeigentext in den Opus-Check einwerfen.")+'">⚠ War Treffer — 2. Meinung widerlegt ['+esc(it.cr.rule||"?")+'] — per Hand neu deepchecken</span>'+why;
     // Liveness-Badge (user GO 2026-07-18): manuell geprüfte Karten, deren Anzeige die Maschine
     // strukturell NIE live-beweisen kann (Botwall/NEIN-Host, eigene Bot-Abwehr) — die Frische
-    // hängt allein am letzten Blick des Nutzers. Bleibt auch in „Voll geprüft" dauerhaft stehen.
+    // hängt allein am letzten Blick des Nutzers. Bleibt auch in „Voll geprüft“ dauerhaft stehen.
     if (sec==="belegt" && !((it.raw||{}).livenessConfirmed)){
       var hLB = hostOfUrl(it.url);
       var lbUnprovable = (hLB && (allowlistCoveredBy(hLB, window.__NEVERLIST__||[]) || verdictOf(hLB).v === "NEIN"))
@@ -2174,7 +2175,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<div class="s">'+esc(it.metaLine)+"</div>"+mainClose(it)+"</div>"+
       (why ? '<div class="whyrow" title="Grund, warum diese Stelle (noch) kein Treffer ist">'+why+"</div>" : "")+
       alwBox+
-      // „Offline"-Endmarke (user GO 2026-07-18): nur bei aktivem „Ohne Live-Beweis"-Filter,
+      // „Offline“-Endmarke (user GO 2026-07-18): nur bei aktivem „Ohne Live-Beweis“-Filter,
       // auf jeder gezeigten Karte rechts in der Aktionszeile (CSS .aoff = absolut verankert,
       // selbe Position/Höhe überall). Verbucht als closed-user-offline; Rückholweg im Archiv.
       '<div class="pacts-row'+(state.noLive?" hasoff":"")+'">'+
@@ -2193,10 +2194,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
   function renderPruefseite(){
     var items = visibleIn("unverif");
-    // Filter „Ohne Live-Beweis" (user GO 2026-07-18): zeigt quer über alle Gruppen nur
+    // Filter „Ohne Live-Beweis“ (user GO 2026-07-18): zeigt quer über alle Gruppen nur
     // die Einträge, deren Anzeige gerade KEINEN frischen LIVE-Stempel des Sweeps trägt
     // (AMBIG/BLOCKED/UNKNOWN/ohne Stempel) — die vollständige, immer aktuelle Antwort
-    // auf „wo muss ich selbst nachsehen, ob das noch online ist?". Reine Anzeige, null
+    // auf „wo muss ich selbst nachsehen, ob das noch online ist?“. Reine Anzeige, null
     // Pflege: leitet sich live aus den Sweep-Stempeln ab.
     var noProof = function(it){ return ((it.raw||{}).sweepStatus||"") !== "LIVE"; };
     var nlCount = items.filter(noProof).length;
@@ -2246,7 +2247,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           ' title="Öffnet die Tür einmal und führt durch alle Stellen: Anzeigentext einfügen, senden, automatisch weiter — jede Sendung bleibt fest ihrer Stelle zugeordnet.">'+
           'Alle offenen Opus-Checks durchgehen ('+dcbCands.length+')</a></div>';
       }
-      // „Neue Stelle prüfen" (user GO 2026-07-18): eine Stelle, die der Scout nie gesehen hat,
+      // „Neue Stelle prüfen“ (user GO 2026-07-18): eine Stelle, die der Scout nie gesehen hat,
       // manuell zum vollen Opus-Deep-Check einreichen (URL + Firma + Titel + Anzeigentext).
       // Echter <a>-Link (sandbox-sicher) in die Tür; im Tür-Dashboard als Direkt-Knopf.
       html += '<div style="margin:8px 0 2px">'+(DOOR_DASH
@@ -2354,7 +2355,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       '<div class="arow">'+
         '<span class="dot6 '+(it.bucket==="offline"?"o":"x")+'"></span>'+
         mainOpen(it,"rmain")+'<div class="rtitle">'+esc(it.title)+'</div><div class="rmeta">'+esc(it.shortMeta)+"</div>"+mainClose(it)+
-        (anon ? '<span class="anonchip" title="Kein Firmenname in der Anzeige — Sektor/Kriterien nie prüfbar. Original-Link über „Details" erreichbar.">Anonym</span>' : "")+
+        (anon ? '<span class="anonchip" title="Kein Firmenname in der Anzeige — Sektor/Kriterien nie prüfbar. Original-Link über „Details“ erreichbar.">Anonym</span>' : "")+
         '<span class="areason'+subCls+'" title="'+esc(it.raw && it.raw.note ? it.raw.note : "")+'">Grund: <b>'+esc(it.reason)+"</b></span>"+
         stChip+
         // Fit 0 = nie bewertet (Vorfilter-Drop / Agent-Ausfall) — keine Zahl zeigen,
@@ -2566,7 +2567,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      worker (shelved, SETUP-CLOUDFLARE.md). Fallback = prefilled GitHub issue. */
   function doorGui(){
     // Tür-Dashboard: die GUI liegt im selben Verzeichnis — relative Links,
-    // „konfiguriert" heißt hier: door.url/door.token vorhanden.
+    // „konfiguriert“ heißt hier: door.url/door.token vorhanden.
     if (DOOR_DASH) return doorDataCfg() ? "index.html" : "";
     var g = (localStorage.getItem("jobscout-door-gui") || "").trim().replace(/\/+$/,"");
     return /^https:\/\/.+/.test(g) && g.indexOf("script.google.com") < 0 ? g : "";
@@ -2680,7 +2681,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var h = '<div class="stq-head">Briefkasten</div>';
     if (doorGui()){
       h += '<div class="pcard"><b>Bewerbungs-Tür verbunden.</b>'+
-        '<div class="pagesub" style="margin:4px 0 8px">Optionsrunden, Feinschliff, PDF und „Versandt" laufen komplett in der Tür — „Paket" bei einer Stelle öffnet sie direkt.</div>'+
+        '<div class="pagesub" style="margin:4px 0 8px">Optionsrunden, Feinschliff, PDF und „Versandt“ laufen komplett in der Tür — „Paket“ bei einer Stelle öffnet sie direkt.</div>'+
         '<a class="stbtn primary" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(doorGui())+'">Tür öffnen (Runden &amp; Briefkasten)</a></div>';
       return h;
     }
@@ -2698,7 +2699,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var iss = (lw.data && lw.data.issues) || {};
     var keys = Object.keys(iss).sort(function(a,b){ return Number(b)-Number(a); }).slice(0, 8);
     if (!keys.length && !lwPendingTs())
-      h += '<div class="emptybox">Noch keine Pakete — unten bei einer Stelle „Paket" tippen.</div>';
+      h += '<div class="emptybox">Noch keine Pakete — unten bei einer Stelle „Paket“ tippen.</div>';
     keys.forEach(function(k){ h += lwCard(k, iss[k] || {}); });
     return h;
   }
@@ -2922,13 +2923,13 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      landen hier und werden nativ übernommen. NUR im DOOR_DASH-Build aktiv — Artefakt
      und Showcase-Demo bleiben unverändert. window.__DOOR_DEMO__ speist die Vorschau. */
   var P = { view:null, jobId:null, sel:{}, sending:false, state:null, flash:"",
-            // „Neue Stelle prüfen" (user GO 2026-07-18): Formular-Entwurf + Wächter-Warnung;
+            // „Neue Stelle prüfen“ (user GO 2026-07-18): Formular-Entwurf + Wächter-Warnung;
             // lastLook = Sitzungs-Quittung des Letzter-Blick-Schritts vor dem Anschreiben.
             nd:null, ndWarn:null, lastLook:{},
             dc:null, dcDraft:"", dcWarn:null, dcb:null, dcbCands:null, sentHashes:{} };
   var pDcReq = {};   // optimistische "Opus-Check angefordert"-Chips bis zum nächsten Lauf
   /* ---------- Prüf-Status (user GO 2026-07-26) ----------
-     Antwort auf „keine Bestätigung, keine Ansicht, was gerade geprüft wird": jede 🔍-/➕-
+     Antwort auf „keine Bestätigung, keine Ansicht, was gerade geprüft wird“: jede 🔍-/➕-
      Bestellung wird LOKAL protokolliert (jobscout-dc-orders, überlebt Reloads — anders als
      pDcReq) und oben im Prüfen-Tab als Status-Zeile geführt:
        übermittelt (nur lokal bekannt, Buchung steht aus)
@@ -2953,7 +2954,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (!(m[id]||{}).hide) pDcReq[id] = true; }); }catch(e){} })();
   // Hängender Check (2026-07-26, die imos-Lektion): Stempel >= 2 Tage alt und KEIN
   // Opus-Urteil = die gebuchte Prüfung ist mit ihrem Container gestorben (die Text-Spool
-  // ist lokal und git-ignoriert). Der 🔍-Knopf kommt dann WIEDER (statt ewig „angefordert"
+  // ist lokal und git-ignoriert). Der 🔍-Knopf kommt dann WIEDER (statt ewig „angefordert“
   // zu zeigen), und eine Neu-Sendung bucht serverseitig als Neulieferung
   // (apply_user_actions: _redelivery — neueres Datum + Text schlägt den Alt-Stempel).
   function dcoStale(e){
@@ -3012,7 +3013,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     return rows;
   }
   // Grund-Zeile für fertige Checks (user 2026-07-26: „wieso kann ich die Gründe nicht hier
-  // sehen?"): aussortierte Urteile tragen die excludeClass + Begründung im note-Feld
+  // sehen?“): aussortierte Urteile tragen die excludeClass + Begründung im note-Feld
   // (Reject-Vokabular, Härtungs-Paket) — die Box zeigt daraus Klasse + Kurzbegründung;
   // offene Prüflisten-Urteile zeigen ihre offenen Punkte (why-Badges). Volltext wie immer
   // auf der Karte (Archiv/Prüfen -> Details).
@@ -3153,7 +3154,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     });
     var h = '<div class="stq-head">Briefe — du bist dran <span class="c">'+b.act.length+"</span></div>";
     h += b.act.length ? b.act.map(pRowHTML).join("")
-      : '<div class="emptybox">Keine Runde wartet — „Anschreiben" an einer vorgemerkten Stelle startet ein Paket.</div>';
+      : '<div class="emptybox">Keine Runde wartet — „Anschreiben“ an einer vorgemerkten Stelle startet ein Paket.</div>';
     if (b.run.length) h += '<div class="stq-head">Läuft gerade <span class="c">'+b.run.length+"</span></div>"+b.run.map(pRowHTML).join("");
     if (b.done.length) h += '<details class="alwfold"><summary>Erledigte Briefe <span class="c">'+b.done.length+"</span></summary>"+b.done.map(pRowHTML).join("")+"</details>";
     return h;
@@ -3245,7 +3246,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (!j){
       /* Letzter Blick (user GO 2026-07-18): vor dem ersten Anschreiben-Schritt für eine Stelle
          OHNE Maschinen-Live-Beweis einmal die Anzeige öffnen lassen — nur der Mensch kann das
-         hier prüfen. Fail-safe: fehlen die Felder (Queue kennt sie nicht), gilt „nicht belegt". */
+         hier prüfen. Fail-safe: fehlen die Felder (Queue kennt sie nicht), gilt „nicht belegt“. */
       var llProvable = !!(it && (it.livenessConfirmed === true ||
         String((it.sweepStatus||"")).toUpperCase() === "LIVE"));
       if (!llProvable && !P.lastLook[id]){
@@ -3295,7 +3296,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
            Normalfall und braucht keine Meldung */
         var mism = (pn === "1" && pt.recommendation && P.sel[pn] && pt.recommendation !== P.sel[pn])
           ? '<div class="stwhy" style="color:#b45309">⚠ Empfehlung ist „'+esc(lbl(pt.recommendation))+
-            '", ausgewählt ist „'+esc(lbl(P.sel[pn]))+'".</div>' : "";
+            '“, ausgewählt ist „'+esc(lbl(P.sel[pn]))+'“.</div>' : "";
         if (pn === "1"){
           /* Variante ultrakurz (user GO 2026-07-17): zwei Knöpfe NEBENEINANDER mit festen
              Kurz-Labels nach dem gepinnten a/b-Kanon (1A = Umsetzer, 1B = Berater); die
@@ -3314,7 +3315,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           return;
         }
         /* Teil 2 = Unternehmenssatz (Fokus der Runde, user GO 2026-07-17; alte Runden
-           liefern noch den Namen „Reizsatz" — Anzeige-Mapping). Firmen-Steckbrief
+           liefern noch den Namen „Reizsatz“ — Anzeige-Mapping). Firmen-Steckbrief
            (round.companyInfo, optional) direkt über den Vorschlägen. */
         var isU = pn === "2";
         var dispName = isU ? "Unternehmenssatz" : (pt.name||"");
@@ -3367,8 +3368,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       h += '<div class="stdone"><b>Vorgang abgeschlossen</b> — versandt und gebucht.</div>';
     } else if (!pBusy){
       /* Änderungen-Block (user GO 2026-07-17 #2): EIN leeres Freitext-Feld, darunter
-         „Neu generieren" (Text-Runde mit Auswahl + optionalem Freitext — ersetzt
-         „Nur Text-Runde" UND „Feinschliff senden") und der PDF-Knopf nebeneinander. */
+         „Neu generieren“ (Text-Runde mit Auswahl + optionalem Freitext — ersetzt
+         „Nur Text-Runde“ UND „Feinschliff senden“) und der PDF-Knopf nebeneinander. */
       var pHasRound = !!(j.round && j.round.parts && j.round.parts.length);
       h += '<div class="stq-head">Änderungen</div>'+
         '<textarea id="pfeed" class="stfeed"></textarea>'+
@@ -3420,7 +3421,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         return;
       }
       /* Neu generieren (user GO 2026-07-17 #2): EINE Text-Runde aus Auswahl + optionalem
-         Änderungs-Freitext — ersetzt „Nur Text-Runde" UND „Feinschliff senden"; der
+         Änderungs-Freitext — ersetzt „Nur Text-Runde“ UND „Feinschliff senden“; der
          Webhook versteht Codes und Freitext in einer Nachricht (Kontrakt: Codes/Feedback
          ohne `pdf` = neue Text-Runde) */
       var t = ((document.getElementById("pfeed")||{}).value||"").trim();
@@ -3482,16 +3483,16 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   function pgCheck(text, item, others){
     var h = pgHash(text);
     if (P.sentHashes[h]) return { kind:"dup",
-      msg:'Das ist derselbe Text wie eben bei „'+P.sentHashes[h]+'" — hast du die neue Anzeige kopiert?' };
+      msg:'Das ist derselbe Text wie eben bei „'+P.sentHashes[h]+'“ — hast du die neue Anzeige kopiert?' };
     var m = pgMatch(text, item);
     if (pgChrome(text) && !m.ok) return { kind:"chrome",
       msg:"Das sieht nach Webseiten-Gerüst aus (Cookie-/Menü-Texte), nicht nach der Anzeige." };
     if (!m.ok){
       var sus = pgCross(text, item, others);
       if (sus) return { kind:"cross", suspect:sus,
-        msg:'Der Text sieht nach „'+(sus.company||"?")+'" aus — du bist aber bei „'+(item.company||"?")+'".' };
+        msg:'Der Text sieht nach „'+(sus.company||"?")+'“ aus — du bist aber bei „'+(item.company||"?")+'“.' };
       return { kind:"nomatch",
-        msg:'Der Text erwähnt weder „'+(item.company||"?")+'" noch Wörter aus dem Stellentitel.' };
+        msg:'Der Text erwähnt weder „'+(item.company||"?")+'“ noch Wörter aus dem Stellentitel.' };
     }
     return null;
   }
@@ -3512,7 +3513,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var sent = Object.keys(B.sent).length;
       if (sent >= B.items.length){
         return h+'<div class="stq-cmds" style="margin-top:12px"><b>✓ Batch fertig</b> — '+sent+
-          ' Anzeigentext(e) übergeben; der nächste Lauf macht die vollen Opus-Checks (Ergebnis: Prüfliste, „Voll geprüft").'+
+          ' Anzeigentext(e) übergeben; der nächste Lauf macht die vollen Opus-Checks (Ergebnis: Prüfliste, „Voll geprüft“).'+
           (B.lastSent ? '<br><button class="stbtn" style="margin-top:8px" data-pdcundo>✗ Letzte Sendung rückgängig</button>' : "")+
           "</div></div>";
       }
@@ -3529,7 +3530,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       h += '<div class="pshwarn" style="margin:8px 0">⚠ '+esc(P.dcWarn.msg)+"</div>"+
         '<div class="stactions">'+
         (P.dcWarn.kind==="cross" && P.dcWarn.suspect && B
-          ? '<button class="stbtn primary" data-pdcswitch="'+esc(String(P.dcWarn.suspect.id))+'">Zur Stelle „'+esc(P.dcWarn.suspect.company||"?")+'" wechseln</button>' : "")+
+          ? '<button class="stbtn primary" data-pdcswitch="'+esc(String(P.dcWarn.suspect.id))+'">Zur Stelle „'+esc(P.dcWarn.suspect.company||"?")+'“ wechseln</button>' : "")+
         '<button class="stbtn warn" data-pdcsend="force">Trotzdem senden</button>'+
         '<button class="stbtn" data-pdccancel>Abbrechen</button></div>';
     } else {
@@ -3541,11 +3542,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     }
     return h + pFlashHTML() + "</div>";
   }
-  /* „Neue Stelle prüfen" (user GO 2026-07-18): eigener Fund -> voller Opus-Deep-Check.
+  /* „Neue Stelle prüfen“ (user GO 2026-07-18): eigener Fund -> voller Opus-Deep-Check.
      Gleiche Einfüge-Wächter wie der Opus-Check (Müll-Detektor, Firmen-/Titel-Abgleich —
      hier gegen die selbst eingetippte Firma —, Duplikat-Hash), Versand als deepcheck-new
      über denselben Tür-Kanal. Der Lauf legt den Eintrag an; war die Stelle schon bekannt,
-     meldet der Ingest „already-decided" statt einen zweiten Opus-Check zu verbrennen. */
+     meldet der Ingest „already-decided“ statt einen zweiten Opus-Check zu verbrennen. */
   /* Auto-Erkennung (user GO 2026-07-18 #2, "nur copy paste"): deterministische Heuristik füllt
      Firma/Titel/Ort aus dem eingefügten Anzeigentext vor — nur LEERE, nicht von Hand berührte
      Felder, jederzeit korrigierbar. Autorität hat am Ende der Opus-Check (liest den Volltext
@@ -3622,7 +3623,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var identityAuto = !((d.company && flags.touchedCo) || (d.title && flags.touchedTi));
     if (!force){
       var h2 = pgHash(d.text);
-      if (P.sentHashes[h2]){ P.ndWarn = { kind:"dup", msg:'Das ist derselbe Text wie eben bei „'+P.sentHashes[h2]+'" — hast du die neue Anzeige kopiert?' }; return renderAll(); }
+      if (P.sentHashes[h2]){ P.ndWarn = { kind:"dup", msg:'Das ist derselbe Text wie eben bei „'+P.sentHashes[h2]+'“ — hast du die neue Anzeige kopiert?' }; return renderAll(); }
       if (pgChrome(d.text)){ P.ndWarn = { kind:"chrome", msg:"Das sieht nach Webseiten-Gerüst aus (Cookie-/Menü-Texte), nicht nach der Anzeige." }; return renderAll(); }
       if (!identityAuto && d.company){
         var g = pgCheck(d.text, { id:d.url, company:d.company, title:d.title }, []);
@@ -3691,7 +3692,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       // Bewerbungs-Portal (user GO 2026-07-11 #2): die Tür-GUI lebt jetzt HIER — kein
       // Tür-Knopf mehr; Briefe/Vorgänge direkt auf dieser Seite.
       // Vorgemerkt zeigt nur Stellen OHNE laufenden Brief-Vorgang (user GO 2026-07-17):
-      // sobald ein Paket angefordert ist, lebt die Karte unten in „Briefe" — doppelt
+      // sobald ein Paket angefordert ist, lebt die Karte unten in „Briefe“ — doppelt
       // wäre Lärm. Reine Anzeige; die Vormerkung selbst bleibt gespeichert.
       var pj = pJobs(), pBusyIds = {};
       Object.keys(pj).forEach(function(k){
@@ -3707,24 +3708,24 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         html += vmHead2 + bew.map(function(it){ return mcardHTML(it,"bewerben"); }).join("") + portalSectionHTML();
       else
         html += portalSectionHTML() + vmHead2 +
-          '<div class="aps-legend">Nichts vorgemerkt — „Bewerben" in Start oder Prüfen.</div>';
+          '<div class="aps-legend">Nichts vorgemerkt — „Bewerben“ in Start oder Prüfen.</div>';
     } else if (doorGui()){
       html += vmHead;
       html += bew.length
         ? bew.map(function(it){ return mcardHTML(it,"bewerben"); }).join("")
-        : '<div class="emptybox">Noch nichts vorgemerkt — in Start oder Prüfen auf „Bewerben" tippen.</div>';
+        : '<div class="emptybox">Noch nichts vorgemerkt — in Start oder Prüfen auf „Bewerben“ tippen.</div>';
       html += '<a class="doorcard" target="_blank" rel="noopener noreferrer" href="'+esc(doorGui())+'">Bewerbungs-Tür öffnen'+
         '<span class="s">Anschreiben-Paket anfordern · Optionsrunden beantworten · PDF bauen · Versandt verbuchen</span></a>';
     } else {
       html += vmHead;
       html += bew.length
         ? bew.map(function(it){ return mcardHTML(it,"bewerben"); }).join("")
-        : '<div class="emptybox">Noch nichts vorgemerkt — in Start oder Prüfen auf „Bewerben" tippen.</div>';
+        : '<div class="emptybox">Noch nichts vorgemerkt — in Start oder Prüfen auf „Bewerben“ tippen.</div>';
       // Verbindungsfeld (wieder da, 2026-07-11): ohne gespeicherte Tür-URL gibt es weder den
       // Tür-Link auf den Vorgemerkt-Karten noch Opus-Check/Sofort-Transport — einmal pro
       // Gerät/Seite eintragen. Handler #lwsave2 validiert (nie script.google.com).
       html += '<div class="stq-cmds"><b>Bewerbungs-Tür verbinden</b> — einmal die GitHub-Pages-URL der Tür eintragen; '+
-        'danach trägt jede Vorgemerkt-Karte den Link „In der Tür öffnen" (und Prüflisten-Karten den Opus-Check).<br>'+
+        'danach trägt jede Vorgemerkt-Karte den Link „In der Tür öffnen“ (und Prüflisten-Karten den Opus-Check).<br>'+
         '<input id="lwsetup2" placeholder="https://…github.io/jobscout-door/" style="width:68%;max-width:420px;margin:8px 6px 0 0;padding:7px 10px;border:1px solid var(--b18);border-radius:8px;background:transparent;color:var(--ink)">'+
         '<button class="stbtn primary" id="lwsave2">Speichern</button></div>';
     }
@@ -3859,7 +3860,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       html += '<div class="arun" id="arc-verw"><div class="arunhead sect">'+
         '<span class="rdate">Von dir verworfen</span>'+
         '<span class="rid">'+verw.length+' Stellen</span>'+
-        '<span class="rlabel">„Zurückholen" bringt die Stelle zurück.</span>'+
+        '<span class="rlabel">„Zurückholen“ bringt die Stelle zurück.</span>'+
       "</div>" + '<div class="listcard arclist">'+verworfenRowsHTML()+"</div></div>";
     }
     // --- Aussortiert (vom Scout): ALL system rejects (excluded*), PERMANENT (user 2026-07-06).
@@ -3868,7 +3869,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     html += '<div class="arun" id="arc-aus"><div class="arunhead sect">'+
       '<span class="rdate">Aussortiert (vom Scout)</span>'+
       '<span class="rid">'+exc.length+' Stellen · dauerhaft</span>'+
-      '<span class="rlabel" title="Nicht zu verwechseln mit „Von dir verworfen" — hier hat der Scout aussortiert, nie du.">Automatisch aussortiert — der Balken zeigt das Gewicht des Grundes, Antippen öffnet die Liste.</span>'+
+      '<span class="rlabel" title="Nicht zu verwechseln mit „Von dir verworfen“ — hier hat der Scout aussortiert, nie du.">Automatisch aussortiert — der Balken zeigt das Gewicht des Grundes, Antippen öffnet die Liste.</span>'+
     "</div>";
     if (!exc.length) html += '<div class="emptybox">Noch nichts automatisch aussortiert.</div>';
     // Gruppierung nach GRUND-Familie statt Status-Slug/Stufe (user GO 2026-07-11, grundOf).
@@ -4147,7 +4148,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var pill = document.getElementById("sendpill");
     if (DOOR_DASH){
       // Tür-Dashboard: gesendet wird still und sofort — die Pille erscheint NUR,
-      // wenn ein Versand scheiterte, und ist dann ein „erneut senden"-Knopf.
+      // wenn ein Versand scheiterte, und ist dann ein „erneut senden“-Knopf.
       bar.hidden = true;
       var obd = doorOutbox();
       // Sync-Marken (Stern/Vormerkung) zählen NUR nach einem Fehlversand mit — nie
@@ -4163,7 +4164,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     }
     if (doorGui()){
       // Tür konfiguriert (user 2026-07-11): der Klebebalken entfällt ersatzlos — jedes
-      // Antippen verschifft selbst über die Tür, und „wartet auf den Scout" ist
+      // Antippen verschifft selbst über die Tür, und „wartet auf den Scout“ ist
       // Maschinenzustand, keine Anzeige. Nur im Sandbox geparkte Pakete brauchen noch
       // EINEN Tipp: die schwebende Sende-Pille (echter <a>-Link, Tab schließt sich selbst).
       bar.hidden = true;
@@ -4219,7 +4220,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
 
   function refresh(){
-    // Tür-Dashboard: den Zwischenspeicher SOFORT zeichnen (kein „Lädt…"-Warten auf
+    // Tür-Dashboard: den Zwischenspeicher SOFORT zeichnen (kein „Lädt…“-Warten auf
     // die 1–2 s Drive-Antwort); die frische Antwort ersetzt ihn gleich darunter.
     if (DOOR_DASH && !state.items.length){
       var c = dashCache();
@@ -4308,7 +4309,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (po){ try { var pp = JSON.parse(po.getAttribute("data-popt")); P.sel[pp.p] = pp.c; renderAll(); } catch(err){} return; }
     var pd = e.target.closest("[data-pdc]");
     if (pd){ try { P.dc = JSON.parse(pd.getAttribute("data-pdc")); P.dcb = null; P.dcDraft = ""; P.dcWarn = null; P.view = "dc"; renderAll(); } catch(err){} return; }
-    // „Neue Stelle prüfen" (user GO 2026-07-18)
+    // „Neue Stelle prüfen“ (user GO 2026-07-18)
     if (e.target.closest("[data-pnewdc]")){ P.nd = P.nd || {}; P.ndWarn = null; P.view = "newdc"; state.view = "pruefseite"; renderAll(); return; }
     var pns = e.target.closest("[data-pndsend]");
     if (pns){ pndSend(pns.getAttribute("data-pndsend") === "force"); return; }
@@ -4377,7 +4378,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // Tür-Dashboard: Pille = Nachversand-Knopf (stilles fetch-Retry, keine Navigation)
     var obr = e.target.closest("[data-obretry]");
     if (obr){ e.preventDefault(); flushDoorOutbox(); syncSkipped = {}; pushMarks(); return; }
-    // Störungs-Banner: „Erneut versuchen" lädt die Tür-Daten neu
+    // Störungs-Banner: „Erneut versuchen“ lädt die Tür-Daten neu
     var drt = e.target.closest("[data-doorretry]");
     if (drt){ e.preventDefault(); refresh(); return; }
     var dt = e.target.closest("[data-details]");
@@ -4425,7 +4426,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var chip = document.getElementById("pdcchip");
       if (chip) chip.innerHTML = pgChipHTML(P.dcDraft, P.dc||{});
     }
-    // „Neue Stelle prüfen" (user GO 2026-07-18 #2): beim Einfügen des Anzeigentexts leere,
+    // „Neue Stelle prüfen“ (user GO 2026-07-18 #2): beim Einfügen des Anzeigentexts leere,
     // unberührte Identitätsfelder automatisch vorbefüllen — ohne je eine Nutzereingabe zu
     // überschreiben; Handkorrektur eines Felds beendet dessen Auto-Modus dauerhaft.
     if (e.target && e.target.id === "pndtext"){
@@ -4471,7 +4472,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           if (items.length){ P.dcb = { items:items, idx:0, sent:{}, lastSent:null };
             P.dc = items[0]; P.view = "dc"; state.view = "pruefseite"; took = true; }
         } } catch(e){} }
-      // „Neue Stelle prüfen"-Einsprung vom Artefakt-Dashboard (user GO 2026-07-18)
+      // „Neue Stelle prüfen“-Einsprung vom Artefakt-Dashboard (user GO 2026-07-18)
       if (/#newdc=1/.test(hash)){ P.nd = {}; P.ndWarn = null; P.view = "newdc"; state.view = "pruefseite"; took = true; }
       if (took) history.replaceState(null, "", location.pathname + location.search);
     })();
