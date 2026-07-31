@@ -1380,7 +1380,22 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      📨-Paket-Knopf beweist es). Gleiche Undo/Dedup-Semantik wie die Outbox der Tür-GUI. */
   var DOOR_OB_KEY = "jobscout-door-outbox";
   function doorOutbox(){ try{ return JSON.parse(localStorage.getItem(DOOR_OB_KEY)||"[]")||[]; }catch(e){ return []; } }
-  function saveDoorOutbox(a){ try{ localStorage.setItem(DOOR_OB_KEY, JSON.stringify(a)); }catch(e){} }
+  /* Rücklese-Verifikation wie bei saveMarks (Fix 2026-07-31): ein stiller Schreibfehler
+     (voller/gesperrter localStorage) ließ das Paket verschwinden, WÄHREND die Marke selbst
+     gespeichert wurde — die Karte war weg, die Entscheidung nirgends. Schlägt der Schreib-
+     vorgang fehl, sagt es das rote Band; die Marke bleibt, nichts wird stumm verworfen. */
+  function saveDoorOutbox(a){
+    var raw = JSON.stringify(a);
+    try {
+      localStorage.setItem(DOOR_OB_KEY, raw);
+      if ((localStorage.getItem(DOOR_OB_KEY) || "") !== raw) throw new Error("readback");
+      return true;
+    } catch(e){
+      state.saveErr = true;
+      try { showSaveWarn(); } catch(e2){}
+      return false;
+    }
+  }
   function queueDoorActs(acts){
     var box = doorOutbox();
     var key = function(x){ return String(x.id)+"|"+String(x.action)+"|"+(x.undo?"1":"0"); };
@@ -1412,16 +1427,42 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var cfg = doorDataCfg();
     if (!cfg) return Promise.reject(new Error("no-config"));
     obj.token = cfg.token;
-    return fetch(cfg.url, { method:"POST", body: JSON.stringify(obj), redirect:"follow" })
+    /* HARTES TIMEOUT (Fix 2026-07-31, im Nachbau belegt): ohne Timeout settlet eine
+       hängende Anfrage (Apps-Script-Kaltstart, gedrosselter Hintergrund-Tab) NIE — und
+       weil obFlushing/pushing nur im then/catch zurückgesetzt werden, blieb der Versand
+       für den Rest der Sitzung gesperrt UND die Warn-Pille unterdrückt. Messung: 40
+       markierte Stellen verschwanden aus der Liste, 0 kamen an, keine Warnung. Der
+       Abbruch führt in den catch-Pfad -> Sperre auf, Outbox bleibt, Pille erscheint. */
+    var ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var opts = { method:"POST", body: JSON.stringify(obj), redirect:"follow" };
+    if (ctl) opts.signal = ctl.signal;
+    var timer = null;
+    var run = fetch(cfg.url, opts)
       .then(function(r){ return r.json(); })
       .then(function(j){ if (!j || !j.ok) throw new Error((j && j.error) || "door"); return j; });
+    var guard = new Promise(function(_, rej){
+      timer = setTimeout(function(){
+        try { ctl && ctl.abort(); } catch(e){}
+        rej(new Error("timeout"));
+      }, DOOR_TIMEOUT_MS);
+    });
+    return Promise.race([run, guard]).then(
+      function(j){ clearTimeout(timer); return j; },
+      function(e){ clearTimeout(timer); throw e; });
   }
-  var obFlushing = false;
+  var DOOR_TIMEOUT_MS = (typeof window !== "undefined" && Number(window.__DOOR_TIMEOUT_MS__)) || 20000;
+  // Wachhund: eine Sperre, die älter als Timeout + Puffer ist, gilt als verwaist und wird
+  // übergangen — damit kann kein künftiger ungetimeouteter Pfad den Versand wieder für die
+  // ganze Sitzung stilllegen. Doppelversand ist harmlos (die Tür dedupt Zwillinge).
+  var DOOR_LATCH_MS = DOOR_TIMEOUT_MS + 10000;
+  var PILL_QUIET_MS = 8000;   // normaler Flug ist in 1-2 s durch; danach ist Schweigen falsch
+  var obFlushing = false, obFlushAt = 0, pushAt = 0, pillTimer = null;
+  function latched(flag, since){ return flag && (Date.now() - since) < DOOR_LATCH_MS; }
   function flushDoorOutbox(){
-    if (!DOOR_DASH || obFlushing) return;
+    if (!DOOR_DASH || latched(obFlushing, obFlushAt)) return;
     var batch = doorOutbox().slice(0, 40);
     if (!batch.length) return;
-    obFlushing = true;
+    obFlushing = true; obFlushAt = Date.now();
     var key = function(x){ return String(x.id)+"|"+String(x.action)+"|"+(x.undo?"1":"0"); };
     var sent = {}; batch.forEach(function(a){ sent[key(a)] = 1; });
     doorPost({ action: "mark", acts: batch })
@@ -1488,7 +1529,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
   function pushMarks(){
     if (pushTimer){ clearTimeout(pushTimer); pushTimer = null; }
-    if (!DOOR_DASH || syncOff || pushing || !doorDataCfg()) return;
+    if (!DOOR_DASH || syncOff || latched(pushing, pushAt) || !doorDataCfg()) return;
     var payload = {};
     var stamped = false;
     Object.keys(marksDirty).forEach(function(id){
@@ -1509,7 +1550,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     saveSyncMap(DIRTY_KEY, marksDirty);
     if (stamped) saveMarks();
     if (!Object.keys(payload).length) return;
-    pushing = true;
+    pushing = true; pushAt = Date.now();
     doorPost({ action:"marks-set", marks: payload })
       .then(function(j){
         pushing = false; syncFailed = false;
@@ -4155,7 +4196,15 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       // während des normalen Debounce/Flugs (sonst blitzte die Pille bei jedem Tipp).
       var syncN = (syncFailed && !syncOff) ? Object.keys(marksDirty).length : 0;
       var pend = obd.length + syncN;
-      pill.innerHTML = pend && !obFlushing && !pushing
+      /* Die Pille darf NUR den normalen Flug überdecken (dafür war die Bedingung da),
+         nicht unbegrenzt: hing die Anfrage, blieb obFlushing stehen und die Warnung war
+         für immer unsichtbar (Fix 2026-07-31). Nach PILL_QUIET_MS erscheint sie, und ein
+         Timer sorgt dafür, dass das auch ohne weiteres Rendern passiert. */
+      var quiet = (obFlushing && Date.now() - obFlushAt < PILL_QUIET_MS) ||
+                  (pushing && Date.now() - pushAt < PILL_QUIET_MS);
+      if (pend && quiet && !pillTimer)
+        pillTimer = setTimeout(function(){ pillTimer = null; renderExportBar(); }, PILL_QUIET_MS);
+      pill.innerHTML = pend && !quiet
         ? '<a class="sendpill" href="#" data-obretry'+
           ' title="Der Versand an die Tür hat nicht geklappt (offline?). Antippen sendet alles erneut — ohne Datenverlust, doppelt gesendete Markierungen sind harmlos.">'+
           '📤 <b>'+pend+'</b> nicht gesendet — erneut senden</a>'
