@@ -863,8 +863,15 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (j.applog) window.__APPLOG__ = j.applog;
     if (j.allowlist) window.__ALLOWLIST__ = j.allowlist;
     if (j.neverlist) window.__NEVERLIST__ = j.neverlist;
+    // Capability-Flag der Tür (2026-08-01): welche Mark-Verben door.gs whitelistet.
+    // Batch-Knöpfe (z. B. „live gesehen") erscheinen NUR für gemeldete Verben — eine
+    // alte Tür würde unbekannte Verben still verwerfen und trotzdem ok antworten
+    // (dieselbe Stillverlust-Klasse wie 2026-07-30). Kein Feld = alte Tür = Knopf aus.
+    doorMarkVerbs = Array.isArray(j.markVerbs) ? j.markVerbs : doorMarkVerbs;
     return normalize(j.data || j);
   }
+  var doorMarkVerbs = [];
+  function doorHasVerb(v){ return doorMarkVerbs.indexOf(v) >= 0; }
   function loadData(){
     if (DOOR_DASH){
       // Vorschau-Modus: eingebackenes Demo-Bündel statt Netz (nie in Produktion gesetzt)
@@ -1160,6 +1167,34 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   function daysSinceStamp(v){
     var t = Date.parse(String(v||"").split("#")[0]);
     return isNaN(t) ? 0 : Math.floor((Date.now() - t) / 86400000);
+  }
+  /* „Zuletzt live geprüft" (user GO 2026-08-01): userLiveSeen kommt aus den DATEN
+     (apply_user_actions, Verb live-seen). Das Overlay ist nur die Sofort-Anzeige nach dem
+     Knopfdruck, bis der nächste Lauf den Stempel dauerhaft gebucht hat — Versand läuft über
+     die normale Outbox-Maschine (Pille/Retry), das Overlay ersetzt also keinen Transport. */
+  var ULS_KEY = "jobscout-liveseen", ulsCache = null;
+  function ulsOverlay(){ try{ return JSON.parse(localStorage.getItem(ULS_KEY)||"{}")||{}; }catch(e){ return {}; } }
+  function saveUlsOverlay(o){ try{ localStorage.setItem(ULS_KEY, JSON.stringify(o)); }catch(e){} }
+  function userLiveSeenOf(it){
+    if (ulsCache === null) ulsCache = ulsOverlay();
+    var d = String((it.raw||{}).userLiveSeen||"").slice(0,10);
+    var o = String(ulsCache[it.id]||"").slice(0,10);
+    return o > d ? o : d;
+  }
+  function pruneUlsOverlay(){
+    if (!state.items.length) return;
+    var byId = {};
+    state.items.forEach(function(it){ byId[it.id] = String((it.raw||{}).userLiveSeen||"").slice(0,10); });
+    var ov = ulsOverlay(), removed = false;
+    Object.keys(ov).forEach(function(id){
+      // Daten haben aufgeholt (Stempel >= Overlay) ODER die Stelle ist ganz weg -> Overlay-Zeile raus
+      if (!(id in byId) || byId[id] >= String(ov[id]||"")){ delete ov[id]; removed = true; }
+    });
+    if (removed){ saveUlsOverlay(ov); ulsCache = null; }
+  }
+  function fmtDE(iso){
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||""));
+    return m ? m[3]+"."+m[2]+"."+m[1] : String(iso||"");
   }
   // Spiegel von isSpecificPostingUrl() im Workflow (Board-Root/Karriere-Übersicht erkennen).
   function dashSpecificUrl(u){
@@ -1662,6 +1697,28 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     }
     saveMarks(); renderAll();
   }
+  /* Sammel-Vermerk (user GO 2026-08-01): stempelt jede AKTUELL im „Ohne Live-Beweis"-Filter
+     sichtbare Stelle mit dem heutigen Datum. Versand als normale live-seen-Aktionen über die
+     Tür (Outbox-Maschine: Batches à 40, Pille bei Fehlversand, idempotente Replays); das
+     Overlay zeigt die Badges sofort, gebucht wird beim nächsten Lauf (apply_user_actions). */
+  function liveSeenAll(){
+    if (!DOOR_DASH || !doorHasVerb("live-seen")) return;
+    var today = new Date().toISOString().slice(0,10);
+    var items = visibleIn("unverif").filter(function(it){
+      return ((it.raw||{}).sweepStatus||"") !== "LIVE" && userLiveSeenOf(it) !== today;
+    });
+    if (!items.length){ renderAll(); return; }
+    if (!confirm(items.length+" Stellen als heute live gesehen vermerken?\n\n"+
+                 "Gilt für alles, was der Filter „Ohne Live-Beweis“ gerade zeigt — also nur, "+
+                 "wenn du die Anzeigen wirklich eben offen hattest.")) return;
+    var ov = ulsOverlay();
+    doorShip(items.map(function(it){
+      ov[it.id] = today;
+      return { id: it.id, action: "live-seen", date: today };
+    }));
+    saveUlsOverlay(ov); ulsCache = null;
+    renderAll();
+  }
   function pruneMarks(){
     if (!state.items.length) return;   // never prune against an unloaded list
     var known = {}; state.items.forEach(function(it){
@@ -2147,14 +2204,28 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // Liveness-Badge (user GO 2026-07-18): manuell geprüfte Karten, deren Anzeige die Maschine
     // strukturell NIE live-beweisen kann (Botwall/NEIN-Host, eigene Bot-Abwehr) — die Frische
     // hängt allein am letzten Blick des Nutzers. Bleibt auch in „Voll geprüft“ dauerhaft stehen.
+    var lbCovered = false;
+    var uls = userLiveSeenOf(it);   // „Zuletzt live geprüft" (user GO 2026-08-01)
     if (sec==="belegt" && !((it.raw||{}).livenessConfirmed)){
       var hLB = hostOfUrl(it.url);
       var lbUnprovable = (hLB && (allowlistCoveredBy(hLB, window.__NEVERLIST__||[]) || verdictOf(hLB).v === "NEIN"))
         || String((it.raw||{}).sweepStatus||"").toUpperCase()==="AMBIG";
       if (lbUnprovable){
+        // Der jüngere Blick zählt: 🔍-Bestellung (deepcheckRequested) ODER der
+        // Live-gesehen-Stempel — beides ist „der Nutzer hatte die Anzeige offen".
         var lbSeen = String((it.raw||{}).deepcheckRequested||"").slice(0,10);
+        if (uls && uls > lbSeen) lbSeen = uls;
         why += '<span class="whychip host" title="Die Maschine kann diese Anzeige nie automatisch live-prüfen (Botwall/eigene Bot-Abwehr). Ob sie noch online ist, hängt an deinem letzten Blick — vor einer Bewerbung den Link kurz öffnen.">Liveness nicht automatisch prüfbar'+(lbSeen?' · von dir gelesen am '+esc(lbSeen):'')+'</span>';
+        lbCovered = true;
       }
+    }
+    // „Zuletzt live geprüft <Datum>" (user GO 2026-08-01): der Nutzer hat die Anzeige an
+    // dem Tag geöffnet und sie war noch online — der menschliche Zwilling des LIVE-Stempels
+    // für Stellen ohne Maschinen-Beweis. Reiner Anzeige-Vermerk: kein Gate liest ihn, ein
+    // Treffer kann daraus nie entstehen. Entfällt, wo das Liveness-Badge das Datum schon trägt.
+    if (uls && !lbCovered && it.bucket === "unverif"){
+      var ulsAge = daysSinceStamp(uls);
+      why += '<span class="whychip" title="Du hast die Anzeige an diesem Tag geöffnet — sie war noch online. Ersetzt keinen Maschinen-Beweis; vor einer Bewerbung kurz neu öffnen.">Zuletzt live geprüft '+esc(fmtDE(uls))+(ulsAge>=7?' <b>(vor '+ulsAge+' Tagen)</b>':'')+'</span>';
     }
     why = applogChipHTML(it) + why;   // Log-Abgleich (user GO 2026-07-10) zuerst — verhindert Doppelbewerbung
     var alwBox = "";
@@ -2262,6 +2333,19 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     html += dcoBoxHTML();
     html += '<div><button class="nlchip'+(nlOn?" on":"")+'" data-pnl>'+
       'Ohne Live-Beweis <span class="c">'+nlCount+"</span></button></div>";
+    /* Sammel-Vermerk „Zuletzt live geprüft" (user GO 2026-08-01): NUR bei aktivem Filter,
+       NUR im Tür-Dashboard und NUR wenn die Tür das Verb meldet (Capability-Flag markVerbs —
+       eine alte Tür würde das Verb still verwerfen und trotzdem ok sagen; ohne Flag bleibt
+       der Knopf weg, statt Marken lautlos zu verlieren). Zählt nur Stellen, die den
+       heutigen Stempel noch nicht tragen. */
+    if (nlOn && DOOR_DASH && doorHasVerb("live-seen")){
+      var lsToday = new Date().toISOString().slice(0,10);
+      var lsRemain = items.filter(function(it){ return userLiveSeenOf(it) !== lsToday; }).length;
+      if (lsRemain > 0)
+        html += '<div style="margin:6px 0 2px"><button class="btn-g" data-plsall'+
+          ' title="Vermerkt auf allen unten gezeigten Stellen: heute geöffnet, Anzeige war noch online — Badge „Zuletzt live geprüft“. Nur dein dokumentierter Blick, nie ein Maschinen-Beweis.">'+
+          'Alle '+lsRemain+' hier: eben live gesehen ✓</button></div>';
+    }
     if (!items.length)
       html += '<div class="emptybox">'+(nlOn
         ? "Nichts übrig — alle offenen Stellen tragen gerade einen LIVE-Beweis."
@@ -3083,7 +3167,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
   function dcoBoxHTML(){
     var rows = dcoRows(); if (!rows.length) return "";
-    var CH = { sent:   ["⏳","Übermittelt","an die Tür übergeben — der nächste Lauf bucht die Bestellung"],
+    /* Wortlaut-Fix 2026-08-01: die ⏳-Stufe nannte nur den Rückfallweg („der nächste Lauf
+       bucht"), obwohl im Normalfall sofort der Express-Lauf startet — am 30.07. las der
+       Nutzer daraus „passiert erst im nächsten Lauf", während das Urteil längst da war. */
+    var CH = { sent:   ["⏳","Übermittelt","an die Tür übergeben — Express-Prüfung startet automatisch (Minuten); sonst bucht der nächste Lauf"],
                booked: ["🔄","In Prüfung","gebucht — Express-Lauf läuft (Minuten) bzw. nächster regulärer Lauf"],
                done:   ["✅","Fertig geprüft",""] };
     var BL = { treffer: "Treffer", unverif: "Prüfliste — deine Entscheidung",
@@ -4238,8 +4325,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
 
   /* ---------------- root render / events ---------------- */
   function renderAll(){
-    inhCache = null;
-    pruneMarks(); pruneLogmarks();
+    inhCache = null; ulsCache = null;
+    pruneMarks(); pruneLogmarks(); pruneUlsOverlay();
     renderNav(); renderLive();
     var host = document.getElementById("viewhost");
     var pv = DOOR_DASH ? portalViewHTML() : "";   // Portal-Untersichten (Vorgang/Opus-Check)
@@ -4433,6 +4520,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var dt = e.target.closest("[data-details]");
     if (dt){ var id = dt.getAttribute("data-details"); state.open[id] = !state.open[id]; renderAll(); return; }
     if (e.target.closest("[data-pnl]")){ state.noLive = !state.noLive; renderAll(); return; }
+    if (e.target.closest("[data-plsall]")){ liveSeenAll(); return; }
     var dh = e.target.closest("[data-dcohide]");
     if (dh){ dcoHide(dh.getAttribute("data-dcohide")); renderAll(); return; }
     // Prüfliste-Bereiche sind DEFAULT-OFFEN: toggle auf explizit false/true (nicht !undefined).
