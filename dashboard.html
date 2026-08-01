@@ -3214,7 +3214,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           body: JSON.stringify(Object.assign({ token:c.token, action:action }, data||{})) });
     return pr.then(function(r){ return r.text(); }).then(function(t){
       var j; try { j = JSON.parse(t); } catch(e){ throw new Error("Antwort unlesbar"); }
-      if (!j.ok) throw new Error(j.error||"Fehler");
+      if (!j.ok){
+        var derr = new Error(j.error||"Fehler");
+        if (j.detail) derr.detail = String(j.detail);   // z. B. Anhang 'no-variant'-Hinweis
+        throw derr;
+      }
       return j;
     });
   }
@@ -3316,18 +3320,18 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      (Ordnerinhalt Bewerben/<Firma>/), Teil 8 = Gehaltssatz (Standard AUS — nur ein
      explizites 8B fügt ihn ein). Beide wandern als Codes im selben `pdf …`-Einzeiler
      mit; der deterministische Bau setzt sie um (letter_webhook_script SYSTEM_PARTS). */
-  /* Anhang-Ansicht + Gehalts-Toggle (user GO 2026-07-17, TESTSTAND): Teil 9 zeigt die
-     ANHANG-Sicht (welche Unterlagen mitgehen), Teil 8 ist ein Schalter (aus = 8A, an = 8B
-     + Betrag sichtbar). ⚠ Die Codes reisen unverändert im `pdf`-Einzeiler; die
-     Backend-Semantik von 9A/9B/9C (letter_webhook_script SYSTEM_PARTS + letter_package
-     Verpackungs-Presets) muss beim Live-Gang auf die Anhang-Bedeutung nachgezogen werden. */
+  /* Anlagen-TOGGLE (user GO 2026-08-01 — ersetzt die 3-Preset-Auswahl vom 2026-07-17):
+     Teil 9 ist jetzt ein Schalter wie Teil 8. AUS (9A, Standard) = Brief OHNE
+     Anlagenvermerk, Einzeldateien im Ordner (Portal-Upload-Kanal); AN (9B) = Anlagen-
+     Einzeiler im Brief + EINE Gesamtdatei Bewerbungsunterlagen (E-Mail-Kanal). Die
+     Backend-Semantik (letter_webhook_script SYSTEM_PARTS + letter_package) ist seit
+     2026-08-01 nachgezogen — ein Alt-Code `9C` wird beim Bau sichtbar auf den
+     Standard normalisiert. */
   var P_SYS_PARTS = [
-    /* Anzeige-Reihenfolge = Standard zuerst (user GO 2026-07-17 #2); sichtbar sind 1/2/3,
-       die echten Codes reisen unverändert im `pdf`-Einzeiler */
-    { num:"9", name:"Anhang", def:"9C", options:[
-      { code:"9C", text:"Lebenslauf + Zwischenzeugnis + Bachelorzeugnis" },
-      { code:"9B", text:"Lebenslauf" },
-      { code:"9A", text:"Kein Anhang" }]},
+    { num:"9", name:"Anhang", def:"9A",
+      toggle:{ off:"9A", on:"9B",
+        offText:"aus — Einzeldateien im Ordner (Anschreiben, Lebenslauf, Zeugnisse)",
+        onText:"an — Anlagen im Brief + eine Gesamtdatei (Bewerbungsunterlagen)" } },
     /* Kein Betrag im Quelltext (user 2026-07-17) — der Schalter zeigt nur an/aus;
        der kanonische Gehaltssatz kommt beim Bau aus dem privaten Drive-Regelwerk
        (### Block Gehalt) und steht nie in dieser Datei */
@@ -3342,15 +3346,22 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     });
     var h = "";
     P_SYS_PARTS.forEach(function(sp){
-      if (!(sp.num in P.sel)) P.sel[sp.num] = restore[sp.num] || sp.def;
+      if (!(sp.num in P.sel)){
+        var rc = restore[sp.num];
+        /* Toggle-Teile kennen nur off/on — ein Alt-Code (z. B. 9C aus der Preset-Welt)
+           darf nie wieder in den `pdf`-Einzeiler wandern (Backend lehnt ihn hart ab) */
+        if (sp.toggle && rc !== sp.toggle.off && rc !== sp.toggle.on) rc = null;
+        P.sel[sp.num] = rc || sp.def;
+      }
       if (sp.toggle){
-        /* Schalter-Teil (Gehalt): Schalter UNTER der Überschrift (user GO 2026-07-17 #2);
-           aus = def-Code, an = on-Code + Betrag daneben */
+        /* Schalter-Teil (Anhang/Gehalt): Schalter UNTER der Überschrift (user GO
+           2026-07-17 #2); Zustandstext je Richtung (offText/onText, optional) */
         var isOn = P.sel[sp.num] === sp.toggle.on;
+        var ttxt = isOn ? sp.toggle.onText : sp.toggle.offText;
         h += '<div class="stpart"><div class="stpart-h">'+esc(sp.name)+"</div>"+
           '<div class="sttog-row"><button class="sttog'+(isOn?" on":"")+'" role="switch" aria-checked="'+(isOn?"true":"false")+
           '" aria-label="'+esc(sp.name)+'" data-popt=\''+esc(JSON.stringify({p:sp.num, c:(isOn?sp.toggle.off:sp.toggle.on)}))+'\'></button>'+
-          (isOn && sp.toggle.onText ? '<span class="sttog-val">'+esc(sp.toggle.onText)+"</span>" : "")+
+          (ttxt ? '<span class="sttog-val">'+esc(ttxt)+"</span>" : "")+
           "</div></div>";
         return;
       }
@@ -3502,6 +3513,21 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (j.phase==="sent"){
       h += '<div class="stdone"><b>Vorgang abgeschlossen</b> — versandt und gebucht.</div>';
     } else if (!pBusy){
+      /* Anhang-Umschalter (user GO 2026-08-01): auf der fertigen Karte SOFORT zwischen
+         „ohne Anlagen“ (Einzeldateien) und „mit Anlagen“ (eine Gesamtdatei) wechseln —
+         die Tür tauscht den Ordnerinhalt aus dem Zwischenspeicher um, ohne Neubau.
+         Fehlt die gespeicherte Variante (Alt-Bau), meldet die Tür es und der normale
+         „PDF erneut bauen“-Weg bleibt. */
+      if (j.phase==="final" && j.folderId){
+        var anOn = j.anhang ? j.anhang==="an"
+          : String((j.filing||{}).preset||"").toUpperCase()==="9B";
+        h += '<div class="stq-head">Anhang</div>'+
+          '<div class="sttog-row"><button class="sttog'+(anOn?" on":"")+'" role="switch" aria-checked="'+(anOn?"true":"false")+
+          '" aria-label="Anhang" data-panhang="'+(anOn?"aus":"an")+'"'+dis+'></button>'+
+          '<span class="sttog-val">'+(anOn
+            ? "an — eine Gesamtdatei (Bewerbungsunterlagen) im Ordner"
+            : "aus — Einzeldateien im Ordner (Anschreiben, Lebenslauf, Zeugnisse)")+"</span></div>";
+      }
       /* Änderungen-Block (user GO 2026-07-17 #2): EIN leeres Freitext-Feld, darunter
          „Neu generieren“ (Text-Runde mit Auswahl + optionalem Freitext — ersetzt
          „Nur Text-Runde“ UND „Feinschliff senden“) und der PDF-Knopf nebeneinander. */
@@ -3523,6 +3549,24 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     doorApi("comment", { id:P.jobId, text:text })
       .then(function(){ P.sending = false; P.flash = okMsg; return portalRefresh(); })
       .catch(function(e){ P.sending = false; P.flash = "Fehler: "+e.message; renderAll(); });
+  }
+  /* Anhang-Umschalter (user GO 2026-08-01): Sofort-Wechsel über die Tür — kein Neubau.
+     'no-variant' (Alt-Bau ohne Zwischenspeicher / Variante war nicht baubar) wird mit
+     dem Tür-Hinweis angezeigt; der Rebuild-Weg („PDF erneut bauen“) steht daneben. */
+  function portalAnhang(mode){
+    P.sending = true; P.flash = "Anhang wird umgestellt …"; renderAll();
+    doorApi("anhang", { id:P.jobId, mode:mode })
+      .then(function(r){
+        P.sending = false;
+        P.flash = (mode==="an" ? "Anhang AN — eine Gesamtdatei liegt im Ordner."
+                               : "Anhang AUS — Einzeldateien liegen im Ordner.");
+        return portalRefresh();
+      })
+      .catch(function(e){
+        P.sending = false;
+        P.flash = "Anhang-Wechsel nicht möglich: "+(e && e.detail ? e.detail : e.message);
+        renderAll();
+      });
   }
   function portalCmd(cmd){
     var j = pJobs()[P.jobId] || {};
@@ -4448,6 +4492,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     }
     var pc = e.target.closest("[data-pcmd]");
     if (pc){ portalCmd(pc.getAttribute("data-pcmd")); return; }
+    var pah = e.target.closest("[data-panhang]");
+    if (pah){ portalAnhang(pah.getAttribute("data-panhang")); return; }
     var po = e.target.closest("[data-popt]");
     if (po){ try { var pp = JSON.parse(po.getAttribute("data-popt")); P.sel[pp.p] = pp.c; renderAll(); } catch(err){} return; }
     var pd = e.target.closest("[data-pdc]");
