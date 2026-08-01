@@ -184,6 +184,8 @@ a{color:inherit;text-decoration:none}
   border-radius:999px;padding:2px 8px;white-space:nowrap}
 /* "Bewertung von Sonnet" — rough Kurzcheck score, visibly distinct from Opus deep-checks */
 .sonnetchip{color:#7a5d00;background:#fdf3d7;border:1px solid #ecd9a0}
+/* "Recherche ohne Websuche" — ws-budget-degradiertes Tier-2-Urteil (user GO 2026-08-01) */
+.wsdegchip{color:#7a4b08;background:#fdf1e0;border:1px dashed #ecd0a0}
 /* 🏦 Bank-(Mit-)Eigentümer — deutlicher Vermerk (user GO 2026-07-09), nie ein Ausschluss */
 .bankchip{color:#8a1f1f;background:#fdeaea;border:1px solid #eebcbc}
 /* Gegen-Check-Härtung (user GO 2026-07-25): 2. Meinung ausstehend (amber) / widerlegt (rot) */
@@ -1274,6 +1276,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         // (user GO 2026-07-10; Badge sitzt im Archiv auf dem excluded-Eintrag). Finanzinvestoren
         // jeder Art (VC/PE-Buyout/Family Office): kein Vermerk (user 2026-07-10, "kein Problem").
         bank: !!e.bankOwned,
+        // WEBSEARCH-BUDGET (user GO 2026-08-01): das Urteil entstand ohne Websuche (Session-
+        // Budget erschöpft) — Beleg beruht nur auf direkt abrufbaren Quellen (Selbstdarstellung).
+        wsdeg: e.researchDegraded === "ws-budget",
         // Gegen-Check-Härtung (user GO 2026-07-25): cp = Treffer ohne gültige 2. Meinung
         // (Gegen-Check ausgefallen, der nächste Lauf holt nach); cr = strukturierter
         // Rückzugs-Vermerk (2. Meinung widerlegt das Erst-Urteil -> per Hand neu deepchecken).
@@ -1937,6 +1942,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var nChip = daysSinceStamp((it.raw||{}).firstSeen) <= 3 && (it.raw||{}).firstSeen
       ? '<span class="newchip" title="In den letzten 3 Tagen neu gefunden">neu</span>' : "";
     var sChip = it.sonnet ? '<span class="markchip sonnetchip" title="Grobe Vorab-Bewertung durch Sonnet (Kurzcheck) — kein Opus-Deep-Check">Bewertung von Sonnet</span>' : "";
+    var wsChip = it.wsdeg ? '<span class="markchip wsdegchip" title="Die Tier-2-Recherche lief ohne Websuche (Session-Suchbudget war erschöpft) — der Sektor-Beleg beruht nur auf direkt abrufbaren Quellen (v.a. Selbstdarstellung des Arbeitgebers). Ein späterer sauberer Opus-Check räumt den Vermerk ab.">Recherche ohne Websuche</span>' : "";
     var bChip = it.bank ? '<span class="markchip bankchip" title="'+esc((it.raw&&it.raw.ownershipNote)||"Die Deep-Check-Recherche hat ergeben: eine Bank, Investmentbank, ein Bankenkonsortium oder eine Versicherung ist (Mit-)Eigentümer dieses Arbeitgebers — Ausschlusskriterium (Regel 2026-07-10).")+'">Bank-Eigentümer</span>' : "";
     // Gegen-Check-Härtung (user GO 2026-07-25): 2. Meinung ausstehend / widerlegt
     var cpChip = it.cp ? '<span class="markchip cpchip" title="Die adversariale zweite Opus-Meinung (Gegen-Check) ist in diesem Lauf ausgefallen — der Treffer steht auf dem Erst-Urteil und allen harten Gates; der nächste Lauf holt die 2. Meinung automatisch nach.">Treffer ohne 2. Meinung</span>' : "";
@@ -1948,7 +1954,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     return '<div>'+
       '<div class="row">'+
         '<div class="rfit"><div class="n '+fitClass(it.fit)+'">'+it.fit+'</div><div class="l">Fit</div></div>'+
-        mainOpen(it,"rmain")+'<div class="rtitle-line"><span class="rtitle">'+esc(it.title)+"</span>"+nChip+chip+sChip+bChip+cpChip+crChip+lChip+"</div>"+
+        mainOpen(it,"rmain")+'<div class="rtitle-line"><span class="rtitle">'+esc(it.title)+"</span>"+nChip+chip+sChip+wsChip+bChip+cpChip+crChip+lChip+"</div>"+
           '<div class="rmeta">'+esc(it.metaLine)+"</div>"+mainClose(it)+
         '<div class="racts">'+
           starHTML(it)+
@@ -2196,6 +2202,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // "Bewertung von Sonnet" lebt seit 2026-07-11 in der Chip-Zeile (nicht mehr unter der
     // Pille) — die Badges bilden EINE fortlaufende Zeile statt eines Stapel-Turms links.
     if (it.sonnet) why = '<span class="whychip sonnetchip" title="Grobe Vorab-Bewertung durch Sonnet (Kurzcheck) — kein Opus-Deep-Check">Bewertung von Sonnet</span>'+why;
+    if (it.wsdeg) why = '<span class="whychip wsdegchip" title="Die Tier-2-Recherche lief ohne Websuche (Session-Suchbudget war erschöpft) — der Sektor-Beleg beruht nur auf direkt abrufbaren Quellen. Ein späterer sauberer Opus-Check räumt den Vermerk ab.">Recherche ohne Websuche</span>'+why;
     if (it.bank) why = '<span class="whychip bankchip" title="'+esc((it.raw&&it.raw.ownershipNote)||"")+'">Bank-Eigentümer</span>'+why;
     // Gegen-Check-Härtung (user GO 2026-07-25): der Rückzugs-Vermerk steht dauerhaft VORNE —
     // die Stelle war ein Treffer(-Kandidat), die nachgeholte 2. Opus-Meinung hat das
