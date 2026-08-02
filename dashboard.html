@@ -385,6 +385,19 @@ a{color:inherit;text-decoration:none}
 .nlchip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .nlchip .c{font:600 11px var(--mono);background:var(--chipbg);color:var(--meta);border-radius:999px;padding:1px 7px}
 .nlchip.on .c{background:rgba(255,255,255,.2);color:#fff}
+/* Such-Zeile (user GO 2026-08-02): auf jedem Listen-Reiter — filtert die Karten live */
+.sline{position:relative;display:flex;align-items:center;gap:10px;margin:2px 0 14px;max-width:520px}
+.sline .sico{position:absolute;left:11px;width:15px;height:15px;color:var(--mut1);pointer-events:none}
+.sline-in{flex:1;min-width:0;padding:8px 34px 8px 34px;border:1px solid var(--b18);border-radius:10px;
+  background:transparent;color:var(--ink);font:inherit;font-size:13.5px}
+.sline-in::placeholder{color:var(--mut1)}
+.sline-in:focus{outline:2px solid var(--ink);outline-offset:1px}
+.sline-in::-webkit-search-cancel-button{display:none}
+.sline .sclear{position:absolute;right:5px;width:26px;height:26px;border:0;border-radius:8px;background:transparent;
+  color:var(--meta);font-size:16px;line-height:1;cursor:pointer;display:none}
+.sline .sclear:hover{background:var(--hover)}
+.scount{font-size:12px;color:var(--meta);white-space:nowrap}
+.shide{display:none !important}
 /* Prüf-Status-Box (user GO 2026-07-26): bestellt/läuft/fertig für 🔍-/➕-Bestellungen */
 .dcst{margin:12px 0 4px;border:1px solid var(--b18);border-radius:10px;background:var(--panel);padding:10px 12px}
 .dcst-h{font-size:13px;font-weight:600}
@@ -1902,6 +1915,55 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     return '<div class="pshwarn" style="margin:16px 20px 0">'+inner+"</div>";
   }
 
+  /* ---------- Such-Zeile (user GO 2026-08-02) ----------
+     Jeder Listen-Reiter (Start, Prüfen, Merken, Bewerbungen, Status, Archiv) trägt oben
+     EIN Suchfeld, das die Karten der Seite live filtert — Firma, Titel, Ort (die
+     Titel-/Meta-Zeilen der Karten; Mehrwort-Suche = alle Wörter müssen vorkommen).
+     Reine ANZEIGE wie alle Dashboard-Logik: nichts wird markiert, gebucht oder
+     gespeichert; die Abfrage lebt pro Reiter im Speicher der Sitzung. Beim Tippen wird
+     NICHT neu gerendert (der Fokus bliebe sonst nicht im Feld) — nur die Karten werden
+     ein-/ausgeblendet; ein Mark-Re-Render stellt Feld + Filter aus searchQ wieder her. */
+  var searchQ = {};   // { viewKey: "abfrage" } — sitzungslokal, nie persistiert
+  function searchLineHTML(){
+    var q = searchQ[state.view] || "";
+    return '<div class="sline">'+
+      '<svg class="sico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"></circle><path d="M16.5 16.5 21 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>'+
+      '<input type="search" class="sline-in" value="'+esc(q)+'" placeholder="Suchen: Firma, Titel, Ort …" aria-label="Stellen auf dieser Seite durchsuchen" autocomplete="off" spellcheck="false">'+
+      '<button class="sclear" data-sclear aria-label="Suche löschen" title="Suche löschen">×</button>'+
+      '<span class="scount"></span></div>';
+  }
+  // Karten-Selektor + Textquellen: pro Kartentyp nur Titel-/Meta-Zeilen (nie Knopf-
+  // Beschriftungen oder Dossier-Text). Zeilen OHNE solche Felder (z. B. die Achsen-Zeile
+  // der Status-Seite) werden nie gefiltert.
+  var SEARCH_ROWS = ".row,.jitem,.pcard,.arow,.mcard,.stq-row,.aps-row";
+  function applySearchFilter(){
+    var host = document.getElementById("viewhost"); if (!host) return;
+    var line = host.querySelector(".sline"); if (!line) return;   // Portal-Untersichten o. ä.
+    var toks = String(searchQ[state.view]||"").toLowerCase().split(/\s+/).filter(Boolean);
+    var rows = host.querySelectorAll(SEARCH_ROWS);
+    var shown = 0, total = 0;
+    for (var i = 0; i < rows.length; i++){
+      var el = rows[i];
+      var f = el.querySelectorAll(".rtitle,.rmeta,.t,.s");
+      var txt = "";
+      for (var j = 0; j < f.length; j++) txt += " " + f[j].textContent;
+      txt = txt.toLowerCase();
+      if (!txt.trim()) continue;          // Struktur-Zeilen (Achse etc.) nie anfassen
+      total++;
+      var hit = true;
+      for (var k = 0; k < toks.length; k++) if (txt.indexOf(toks[k]) < 0){ hit = false; break; }
+      // rowHTML/jitemHTML/arowHTML wickeln Karte + Ausklappe in ein nacktes <div> —
+      // das mit ausblenden, damit die offene Ausklappe nicht verwaist stehen bleibt.
+      var p = el.parentElement;
+      var tgt = (p && p !== host && !p.className && !p.id) ? p : el;
+      tgt.classList.toggle("shide", !hit);
+      if (hit) shown++;
+    }
+    var cnt = line.querySelector(".scount"), clr = line.querySelector(".sclear");
+    if (cnt) cnt.textContent = toks.length ? shown+" von "+total : "";
+    if (clr) clr.style.display = toks.length ? "block" : "none";
+  }
+
   function deepPanelHTML(it, opts){
     var d = deepOf(it);
     // Details-Stufe (user GO 2026-07-11): Urteil + Gate-Zeilen + "Lücken" sofort sichtbar,
@@ -2132,6 +2194,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       'Bleibt hier, bis du den Stern entfernst; auch wenn eine Anzeige später offline geht. Mit „Bewerben“ wandert eine Stelle weiter zu den Bewerbungen.</div>';
     if (!items.length && !stubs.length)
       return html + '<div class="emptybox">Noch nichts gemerkt — tippe auf den ☆ Stern (neben „Bewerben“) an einer Stelle in Start oder Prüfen.</div></div>';
+    html += searchLineHTML();
     if (items.length) html += '<div class="listcard">'+items.map(merkRow).join("")+'</div>';
     if (stubs.length) html += '<div class="listcard" style="margin-top:12px">'+stubs.map(stubRow).join("")+'</div>';
     return html + '</div>';
@@ -2188,6 +2251,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         chart+
       '</div>'+
       '<div class="pagesub">Bestätigte Stellen, nach Fit sortiert. Funde der letzten 3 Tage tragen „neu“.</div>';
+    html += searchLineHTML();
     if (!treffer.length) html += '<div class="emptybox">Kein offener Treffer — alles markiert oder archiviert.</div>';
     else html += '<div class="listcard">'+treffer.map(rowHTML).join("")+'</div>';
     if (un) html += '<button class="pruefrow" data-nav="pruefseite">'+un+' unverifizierte Stellen warten in der Prüfliste</button>';
@@ -2367,6 +2431,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     // Volltext wandert als Tooltip auf den Gruppenkopf. "Automatisch" statt "Automatik".
     var html = '<div class="view"><div class="pagehead">Prüfen</div>'+
       '<div class="pagesub">Oben bist du dran, unten arbeitet die Automatik.</div>';
+    html += searchLineHTML();
     // Prüf-Status-Box (user GO 2026-07-26): bestellt/läuft/fertig für 🔍-/➕-Bestellungen.
     html += dcoBoxHTML();
     html += '<div><button class="nlchip'+(nlOn?" on":"")+'" data-pnl>'+
@@ -3072,6 +3137,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var html = '<div class="view"><div class="pagehead">Status</div>'+
       '<div class="pagesub">Alle Bewerbungen mit Stand und Zeitachse — die Knöpfe melden den neuen Status an den Scout, der nächste Lauf bucht ihn ins Log.</div>';
     var aps = renderApplogStatus();
+    if (aps) html += searchLineHTML();
     html += aps || '<div class="emptybox">Noch keine Bewerbungen im Log.</div>';
     return html + "</div>";
   }
@@ -3924,6 +3990,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      funktionsfähig. */
   function renderBewerbungenPublished(){
     var html = '<div class="view"><div class="pagehead">Bewerbungen</div>';
+    html += searchLineHTML();
     var bew = withMark("bewerben"), done = beworbenAll();
     var vmHead = '<div class="stq-head">Vorgemerkt <span class="c">'+bew.length+"</span></div>";
     if (DOOR_DASH){
@@ -3980,6 +4047,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var live = stLive(), dis = studio.busy ? " disabled" : "";
     var html = '<div class="view"><div class="pagehead">Bewerbungen</div>'+
       '<div class="pagesub">Live-Studio — Stelle öffnen, Optionen anklicken, Feinschliff schreiben: alles hier auf der Seite.</div>';
+    html += searchLineHTML();
     html += stBar();
     if (S && S.notice) html += '<div class="stnotice">'+esc(S.notice)+"</div>";
     if (S && S.posting){
@@ -4043,6 +4111,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var total = exc.length + floor.length + verw.length + offAll.length + offLoc.length;
     var html = '<div class="view"><div class="pagehead">Archiv</div>'+
       '<div class="pagesub">Wartung und Nachschlagen.</div>';
+    html += searchLineHTML();
     html += '<div class="hero sm">'+
       '<div class="hstat"><div class="num">'+total+'</div><div class="lbl">Im Archiv</div></div>'+
       '<div class="hstat"><div class="num">'+exc.length+'</div><div class="lbl">Aussortiert</div></div>'+
@@ -4447,6 +4516,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       : state.view==="statuslog" ? renderStatusSeite()
       : renderArchiv()));
     renderExportBar();
+    applySearchFilter();   // Such-Zeile: Filterzustand nach jedem Re-Render wiederherstellen
     showSaveWarn();
   }
   /* Rotes Warnband, falls saveMarks() eine Merkung NICHT verlässlich sichern konnte
@@ -4488,6 +4558,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
 
   document.addEventListener("click", function(e){
+    // Such-Zeile: × leert die Abfrage des aktiven Reiters (ohne Re-Render, Fokus zurück).
+    if (e.target.closest("[data-sclear]")){
+      searchQ[state.view] = "";
+      var si = document.querySelector("#viewhost .sline-in");
+      if (si){ si.value = ""; si.focus(); }
+      applySearchFilter();
+      return;
+    }
     var nav = e.target.closest("[data-nav]");
     if (nav){
       // Seitenwechsel schließt eine offene Portal-Untersicht (Vorgang/Opus-Check) —
@@ -4669,6 +4747,13 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   });
 
   document.addEventListener("input", function(e){
+    // Such-Zeile (user GO 2026-08-02): beim Tippen NUR filtern, nie neu rendern —
+    // ein Re-Render würde den Fokus aus dem Feld werfen.
+    if (e.target && e.target.classList && e.target.classList.contains("sline-in")){
+      searchQ[state.view] = e.target.value;
+      applySearchFilter();
+      return;
+    }
     if (e.target && e.target.id === "stfeed") studio.feedDraft = e.target.value;
     if (e.target && e.target.id === "pdctext"){
       P.dcDraft = e.target.value; P.dcWarn = null;
