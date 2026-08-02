@@ -1954,9 +1954,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       for (var k = 0; k < toks.length; k++) if (txt.indexOf(toks[k]) < 0){ hit = false; break; }
       // rowHTML/jitemHTML/arowHTML wickeln Karte + Ausklappe in ein nacktes <div> —
       // das mit ausblenden, damit die offene Ausklappe nicht verwaist stehen bleibt.
+      // WICHTIG (Fix 2026-08-02, der Deichmann-Bug): „nackt“ muss ein bereits gesetztes
+      // shide IGNORIEREN — sonst kippt die Ziel-Wahl nach dem ersten Ausblenden auf die
+      // Karte selbst, und beim Leeren der Suche bleibt der Wrapper für immer versteckt.
       var p = el.parentElement;
-      var tgt = (p && p !== host && !p.className && !p.id) ? p : el;
+      var pcls = p ? String(p.className||"").replace(/\bshide\b/g,"").trim() : "-";
+      var tgt = (p && p !== host && !pcls && !p.id) ? p : el;
       tgt.classList.toggle("shide", !hit);
+      if (tgt !== el) el.classList.remove("shide");   // Altzustand auf der Karte räumen
       if (hit) shown++;
     }
     var cnt = line.querySelector(".scount"), clr = line.querySelector(".sclear");
