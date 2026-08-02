@@ -609,8 +609,9 @@ a{color:inherit;text-decoration:none}
 /* „Offline“-Endmarke (nur im „Ohne Live-Beweis“-Filter): absolut rechts in der Aktionszeile
    verankert — sitzt dadurch auf JEDER Karte an derselben Stelle und Höhe, egal ob ein
    Opus-Check-Knopf da ist oder die übrigen Knöpfe umbrechen (user GO 2026-07-18). */
-.pacts-row.hasoff{position:relative;padding-right:88px}
-.btn-act.aoff{position:absolute;right:0;top:0;color:var(--meta);background:transparent;border:1px solid var(--b12)}
+/* Offline seit 2026-08-02 (user GO) IMMER inline nach „Details“ (vorher: nur bei aktivem
+   „Ohne Live-Beweis“-Filter, absolut rechts verankert — .hasoff/.aoff-Absolut-CSS entfernt) */
+.btn-act.aoff{color:var(--meta);background:transparent;border:1px solid var(--b12)}
 .btn-act.aoff:hover{color:var(--red);border-color:var(--red);background:var(--red-bg)}
 .checkchip{margin-top:9px;font-size:12.5px;font-weight:600;color:var(--ink);background:var(--chipbg);
   border-radius:6px;padding:5px 9px;display:inline-block}
@@ -2426,17 +2427,18 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<div class="s">'+esc(it.metaLine)+"</div>"+mainClose(it)+"</div>"+
       (why ? '<div class="whyrow" title="Grund, warum diese Stelle (noch) kein Treffer ist">'+why+"</div>" : "")+
       alwBox+
-      // „Offline“-Endmarke (user GO 2026-07-18): nur bei aktivem „Ohne Live-Beweis“-Filter,
-      // auf jeder gezeigten Karte rechts in der Aktionszeile (CSS .aoff = absolut verankert,
-      // selbe Position/Höhe überall). Verbucht als closed-user-offline; Rückholweg im Archiv.
-      '<div class="pacts-row'+(state.noLive?" hasoff":"")+'">'+
+      // „Offline“-Endmarke (user GO 2026-07-18; seit 2026-08-02 user GO IMMER sichtbar —
+      // nicht mehr an den aktiven „Ohne Live-Beweis“-Filter gebunden): auf jeder offenen
+      // Prüflisten-Karte inline direkt nach „Details“, der 🔍 Opus-Check rechts daneben.
+      // Verbucht als closed-user-offline; Rückholweg im Archiv.
+      '<div class="pacts-row">'+
         starHTML(it)+
         '<button class="btn-act a1" data-mark="bewerben" data-id="'+esc(it.id)+'">Bewerben</button>'+
         '<button class="btn-act a3" data-mark="verworfen" data-id="'+esc(it.id)+'">Verwerfen</button>'+
         '<button class="btn-g" data-details="'+esc(it.id)+'">Details</button>'+
+        '<button class="btn-act aoff" data-mark="offline" data-id="'+esc(it.id)+'">Offline</button>'+
         dcBtn+
         (chipTxt ? '<span class="checkchip" style="margin-top:0">Markiert: '+chipTxt+"</span>" : "")+
-        (state.noLive ? '<button class="btn-act aoff" data-mark="offline" data-id="'+esc(it.id)+'">Offline</button>' : "")+
       "</div>"+
       (open ? deepPanelHTML(it)+
         // Zweitaktion nur in der Ausklappe (Karten-Entschlackung 2026-07-10):
