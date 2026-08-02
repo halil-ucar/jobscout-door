@@ -3244,7 +3244,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
             // „Neue Stelle prüfen“ (user GO 2026-07-18): Formular-Entwurf + Wächter-Warnung;
             // lastLook = Sitzungs-Quittung des Letzter-Blick-Schritts vor dem Anschreiben.
             nd:null, ndWarn:null, lastLook:{},
-            dc:null, dcDraft:"", dcWarn:null, dcb:null, dcbCands:null, sentHashes:{} };
+            dc:null, dcDraft:"", dcWarn:null, dcb:null, dcbCands:null, sentHashes:{},
+            feedDraft:"" };
   var pDcReq = {};   // optimistische "Opus-Check angefordert"-Chips bis zum nächsten Lauf
   /* ---------- Prüf-Status (user GO 2026-07-26) ----------
      Antwort auf „keine Bestätigung, keine Ansicht, was gerade geprüft wird“: jede 🔍-/➕-
@@ -3657,7 +3658,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
   function portalOpenJob(d){
     P.jobId = d.id || d.url;
-    P.sel = {}; P.flash = ""; P.view = "job"; state.view = "bewerbungen";
+    P.sel = {}; P.flash = ""; P.feedDraft = ""; P.view = "job"; state.view = "bewerbungen";
     if (!pQueueItem(P.jobId) && P.state && !pJobs()[P.jobId]){
       P.state.queue = [{ id:P.jobId, url:d.url||P.jobId, company:d.company||"",
                          title:d.title||"", fitScore:(d.fit!=null?d.fit:null) }].concat(P.state.queue||[]);
@@ -3890,7 +3891,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
          „Nur Text-Runde“ UND „Feinschliff senden“) und der PDF-Knopf nebeneinander. */
       var pHasRound = !!(j.round && j.round.parts && j.round.parts.length);
       h += '<div class="stq-head">Änderungen</div>'+
-        '<textarea id="pfeed" class="stfeed"></textarea>'+
+        '<textarea id="pfeed" class="stfeed">'+esc(P.feedDraft||"")+"</textarea>"+
         '<div class="stactions two"><button class="stbtn" data-pcmd="regen"'+dis+'>Neu generieren (~3 Min.)</button>'+
         (pHasRound ? '<button class="stbtn primary" data-pcmd="codespdf"'+dis+'>Auswahl übernehmen + PDF bauen (~1 Min.)</button>'
                    : (pHasLetter ? '<button class="stbtn" data-pcmd="pdf"'+dis+'>PDF erneut bauen (~1 Min.)</button>' : ""))+"</div>";
@@ -3992,6 +3993,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var t = ((document.getElementById("pfeed")||{}).value||"").trim();
       var msg = codes.join(" ") + (t ? (codes.length ? "\n" : "") + t : "");
       if (!msg){ P.flash = "Nichts zu senden — erst Auswahl antippen oder Änderungswunsch eintragen."; return renderAll(); }
+      /* Entwurf gilt als verbraucht — auch im DOM leeren, damit der generische
+         Tipp-Schutz in renderAll den gesendeten Text nicht zurückschreibt */
+      P.feedDraft = "";
+      var fe = document.getElementById("pfeed");
+      if (fe) fe.value = "";
       return pComment(msg, "Neue Runde läuft — Ergebnis erscheint hier (~3 Min.).");
     }
     if (cmd === "pdf"){
@@ -4772,11 +4778,44 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
 
   /* ---------------- root render / events ---------------- */
+  /* Tipp-Schutz (Fix 2026-08-02, "wenn ich etwas eintippe löscht sich das weg"):
+     jedes renderAll baut #viewhost per innerHTML neu — der 20s-portalRefresh und
+     viele Klick-Handler feuern es mitten ins Tippen. Vor dem Neubau werden alle
+     Feldwerte (per id) samt Fokus/Cursor gesichert und danach zurückgeschrieben.
+     Asymmetrisch: ein vom Renderer bewusst gefülltes Feld gewinnt (Restore nur in
+     LEERE Felder), ein bewusst geleertes Feld (z.B. pfeed nach dem Senden) wird
+     vorher auch im DOM geleert und taucht deshalb gar nicht erst im Schnappschuss
+     auf. Die Entwurfs-Speicher (P.feedDraft/P.nd/…) bleiben die Hauptgarantie —
+     das hier ist das Netz für Felder ohne eigenen Speicher (Setup-Eingaben etc.). */
+  function snapFields(host){
+    if (!host) return [];
+    var ae = document.activeElement, out = [];
+    Array.prototype.forEach.call(host.querySelectorAll("input[id], textarea[id]"), function(el){
+      var tp = (el.type || "").toLowerCase();
+      if (el.tagName === "INPUT" && tp && tp !== "text" && tp !== "search" && tp !== "url") return;
+      if (!el.value && el !== ae) return;
+      var s = { id: el.id, v: el.value, f: el === ae, s: 0, e: 0 };
+      try { s.s = el.selectionStart; s.e = el.selectionEnd; } catch (err) {}
+      out.push(s);
+    });
+    return out;
+  }
+  function restoreFields(snap){
+    snap.forEach(function(s){
+      var el = document.getElementById(s.id);
+      if (!el) return;
+      if (!el.value && s.v) el.value = s.v;
+      if (s.f && el.value === s.v){
+        try { el.focus(); el.setSelectionRange(s.s, s.e); } catch (err) {}
+      }
+    });
+  }
   function renderAll(){
     inhCache = null; ulsCache = null;
     pruneMarks(); pruneLogmarks(); pruneUlsOverlay();
     renderNav(); renderLive();
     var host = document.getElementById("viewhost");
+    var snap = snapFields(host);
     var pv = DOOR_DASH ? portalViewHTML() : "";   // Portal-Untersichten (Vorgang/Opus-Check)
     host.innerHTML = doorBannerHTML() + (pv || (state.view==="overview" ? renderOverview()
       : state.view==="merken" ? renderMerken()
@@ -4786,6 +4825,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       : renderArchiv()));
     renderExportBar();
     applySearchFilter();   // Such-Zeile: Filterzustand nach jedem Re-Render wiederherstellen
+    restoreFields(snap);   // Tipp-Schutz: ungesendete Eingaben + Fokus zurück
     showSaveWarn();
   }
   /* Rotes Warnband, falls saveMarks() eine Merkung NICHT verlässlich sichern konnte
@@ -5050,6 +5090,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       return;
     }
     if (e.target && e.target.id === "stfeed") studio.feedDraft = e.target.value;
+    /* Änderungen-Feld der Vorgangs-Untersicht (Fix 2026-08-02, "löscht sich von
+       selbst"): ohne Entwurfs-Speicher warf der 20s-portalRefresh und jeder
+       Klick-Re-Render den ungesendeten Text weg */
+    if (e.target && e.target.id === "pfeed") P.feedDraft = e.target.value;
     if (e.target && e.target.id === "pdctext"){
       P.dcDraft = e.target.value; P.dcWarn = null;
       var chip = document.getElementById("pdcchip");
@@ -5062,21 +5106,26 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       P.nd = P.nd || {};
       P.nd.text = e.target.value; P.ndWarn = null;
       var ex = pndExtract(P.nd.text);
-      var fill = function(id, val, tKey, aKey){
+      var fill = function(id, val, tKey, aKey, vKey){
         var el = document.getElementById(id);
         if (!el || P.nd[tKey]) return;
-        if (val && (!el.value || P.nd[aKey])){ el.value = val; P.nd[aKey] = true; }
+        if (val && (!el.value || P.nd[aKey])){ el.value = val; P.nd[aKey] = true; P.nd[vKey] = val; }
       };
-      fill("pndco", ex.company, "touchedCo", "autoCo");
-      fill("pndti", ex.title, "touchedTi", "autoTi");
-      fill("pndort", ex.ort, "touchedOrt", "autoOrt");
+      fill("pndco", ex.company, "touchedCo", "autoCo", "company");
+      fill("pndti", ex.title, "touchedTi", "autoTi", "title");
+      fill("pndort", ex.ort, "touchedOrt", "autoOrt", "ort");
       var ac = document.getElementById("pndautochip");
       if (ac) ac.innerHTML = (P.nd.autoCo||P.nd.autoTi||P.nd.autoOrt)
         ? '<span class="checkchip" style="margin-top:0">⚙ Felder automatisch erkannt — kurz prüfen</span>' : "";
     }
-    if (e.target && e.target.id === "pndco"){ P.nd = P.nd||{}; P.nd.touchedCo = true; P.nd.autoCo = false; }
-    if (e.target && e.target.id === "pndti"){ P.nd = P.nd||{}; P.nd.touchedTi = true; P.nd.autoTi = false; }
-    if (e.target && e.target.id === "pndort"){ P.nd = P.nd||{}; P.nd.touchedOrt = true; P.nd.autoOrt = false; }
+    /* Werte SOFORT in P.nd sichern (Fix 2026-08-02): bisher hielten nur touched-
+       Flags — der Feld-INHALT lebte allein im DOM und verschwand bei jedem
+       Re-Render (der Deepcheck-URL-Fall des Nutzers: pndurl hatte gar keinen
+       Handler, die Identitätsfelder nur die Flags) */
+    if (e.target && e.target.id === "pndurl"){ P.nd = P.nd||{}; P.nd.url = e.target.value; }
+    if (e.target && e.target.id === "pndco"){ P.nd = P.nd||{}; P.nd.company = e.target.value; P.nd.touchedCo = true; P.nd.autoCo = false; }
+    if (e.target && e.target.id === "pndti"){ P.nd = P.nd||{}; P.nd.title = e.target.value; P.nd.touchedTi = true; P.nd.autoTi = false; }
+    if (e.target && e.target.id === "pndort"){ P.nd = P.nd||{}; P.nd.ort = e.target.value; P.nd.touchedOrt = true; P.nd.autoOrt = false; }
   });
   document.addEventListener("submit", function(e){
     if (e.target && e.target.className === "lwform") lwMarkPending();
