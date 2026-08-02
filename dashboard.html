@@ -3245,7 +3245,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
             // lastLook = Sitzungs-Quittung des Letzter-Blick-Schritts vor dem Anschreiben.
             nd:null, ndWarn:null, lastLook:{},
             dc:null, dcDraft:"", dcWarn:null, dcb:null, dcbCands:null, sentHashes:{},
-            feedDraft:"" };
+            feedDraft:"",
+            // Vorgangs-Puffer-Metadaten (Fix 2026-08-03): stateLive = dieser Seitenlauf
+            // hat schon einen LIVE-Stand von der Tür; stateTs = Alter des gezeigten Stands.
+            stateLive:false, stateTs:0 };
   var pDcReq = {};   // optimistische "Opus-Check angefordert"-Chips bis zum nächsten Lauf
   /* ---------- Prüf-Status (user GO 2026-07-26) ----------
      Antwort auf „keine Bestätigung, keine Ansicht, was gerade geprüft wird“: jede 🔍-/➕-
@@ -3387,6 +3390,20 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     });
     return h + "</div>";
   }
+  /* Tür-Lese-Abruf mit Zeitlimit (Fix 2026-08-03): ein hängender Google-Aufruf
+     darf den Briefe-Kasten nie wieder parken — nach 15s wird abgebrochen und
+     genau EINMAL neu versucht (nur der Lese-Abruf; Mutationen werden nie blind
+     doppelt gesendet). */
+  function doorStateFetch_(c, timeoutMs){
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var opts = { redirect:"follow" };
+    var tid = null;
+    if (ctrl){ opts.signal = ctrl.signal;
+      tid = setTimeout(function(){ try { ctrl.abort(); } catch(e){} }, timeoutMs); }
+    return fetch(c.url+"?token="+encodeURIComponent(c.token)+"&action=state", opts)
+      .then(function(r){ if (tid) clearTimeout(tid); return r; },
+            function(e){ if (tid) clearTimeout(tid); throw e; });
+  }
   function doorApi(action, data){
     if (typeof window!=="undefined" && window.__DOOR_DEMO__){
       var D = window.__DOOR_DEMO__;
@@ -3396,7 +3413,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var c = doorDataCfg();
     if (!c) return Promise.reject(new Error("unconfigured"));
     var pr = (action === "state")
-      ? fetch(c.url+"?token="+encodeURIComponent(c.token)+"&action=state", { redirect:"follow" })
+      ? doorStateFetch_(c, 15000).catch(function(){ return doorStateFetch_(c, 20000); })
       : fetch(c.url, { method:"POST", redirect:"follow",
           body: JSON.stringify(Object.assign({ token:c.token, action:action }, data||{})) });
     return pr.then(function(r){ return r.text(); }).then(function(t){
@@ -3421,16 +3438,31 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (P.state) return;
     try {
       var c = JSON.parse(localStorage.getItem(P_STATE_CACHE) || "null");
-      if (c && c.state && c.state.jobs) P.state = c.state;
+      if (c && c.state && c.state.jobs){ P.state = c.state; P.stateTs = c.ts || 0; }
     } catch(e){}
   }
   function portalRefresh(){
     if (!DOOR_DASH || !doorDataCfg()) return Promise.resolve();
     return doorApi("state").then(function(j){
-      P.state = j;
+      P.state = j; P.stateLive = true; P.stateTs = Date.now();
       try { localStorage.setItem(P_STATE_CACHE, JSON.stringify({ ts: Date.now(), state: j })); } catch(e){}
       if (state.view==="bewerbungen" || P.view) renderAll();
     }).catch(function(e){ /* Störungen deckt das Tür-Banner ab */ });
+  }
+  /* Ehrlichkeits-Hinweis (Fix 2026-08-03): solange der Kasten aus dem Geräte-
+     Puffer rendert (Live-Abruf noch unterwegs oder gescheitert), steht dran,
+     von wann der gezeigte Stand ist — stale Karten sind erkennbar, ohne den
+     Sofort-Aufbau zu opfern. Verschwindet mit dem ersten Live-Stand. */
+  function pStandHintHTML(){
+    if (!P.state || P.stateLive) return "";
+    var t = "";
+    if (P.stateTs > 0){
+      var d = new Date(P.stateTs), p2 = function(n){ return ("0"+n).slice(-2); };
+      t = (Date.now() - P.stateTs > 86400000)
+        ? p2(d.getDate())+"."+p2(d.getMonth()+1)+"., "+p2(d.getHours())+":"+p2(d.getMinutes())+" Uhr"
+        : p2(d.getHours())+":"+p2(d.getMinutes())+" Uhr";
+    }
+    return '<div class="aps-legend" id="pstand">'+(t ? "Stand "+esc(t)+" · " : "")+"aktualisiere …</div>";
   }
   function pJobs(){ return (P.state && P.state.jobs) || {}; }
   function pQueue(){ return (P.state && P.state.queue) || []; }
@@ -3635,7 +3667,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       return String((jx.filing&&jx.filing.ts)||jx.updated||"")
         .localeCompare(String((jy.filing&&jy.filing.ts)||jy.updated||""));
     });
-    var h = '<div class="flowline"><b>'+(vmCount||0)+'</b> vorgemerkt → <b>'+
+    var h = pStandHintHTML();
+    h += '<div class="flowline"><b>'+(vmCount||0)+'</b> vorgemerkt → <b>'+
       (b.tap.length+b.run.length)+'</b> in Arbeit → <b>'+b.folder.length+"</b> im Ordner</div>";
     var hidN = Object.keys(pPruneHidden()).filter(function(k){ return pJobs()[k]; }).length;
     if (hidN) h += '<div class="aps-legend">'+hidN+' Vorgang/Vorgänge nur auf diesem Gerät ausgeblendet · '+
