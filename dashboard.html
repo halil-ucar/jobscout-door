@@ -415,6 +415,24 @@ a{color:inherit;text-decoration:none}
 .stdone{margin:14px 0 6px;font-size:13px;color:var(--meta)}
 .stdone b{color:var(--text2)}
 .stq-fit.done{color:var(--mut2)}
+/* Ordner-Karten (user GO 2026-08-02): der Bewerbungen-Tab spiegelt den Bewerben-Ordner —
+   ein fertiger Vorgang = ein Ordner, „Versandt“ räumt Karte UND Ordner zusammen ab */
+.pfcard{border:1px solid var(--b12);border-radius:18px;padding:15px 17px;margin-bottom:10px;background:var(--card);box-shadow:var(--shadow)}
+.pfhead{display:flex;align-items:center;gap:12px;cursor:pointer}
+.pfhead .pficon{flex:none;font-size:19px;line-height:1}
+.pfhead .m{flex:1;min-width:0}
+.pfhead .t{font-size:15px;font-weight:600}
+.pfhead .s{font-size:12.5px;color:var(--meta)}
+.pfage{flex:none;font-size:12px;color:var(--meta);white-space:nowrap}
+.pfage.warn{color:var(--red);font-weight:600}
+.pfline{font-size:12.5px;color:var(--meta);margin:9px 0 0}
+.pfwarn{font-size:12.5px;color:#b45309;margin:9px 0 0}
+.pfacts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+.pfacts .sttog-row{border-top:0;padding:0;margin-left:auto;gap:8px}
+.pfacts .sttog-val{font-size:12px;color:var(--meta)}
+.flowline{font-size:12px;color:var(--meta);margin:2px 0 14px}
+.flowline b{color:var(--ink);font-weight:600}
+.stchip.warnc{background:var(--red-bg);color:var(--red)}
 .stposting{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--b18);border-radius:10px;background:var(--panel);margin-bottom:6px}
 .stposting .m{flex:1;min-width:0}.stposting .t{font-size:15px;font-weight:600}.stposting .s{font-size:12.5px;color:var(--meta)}
 .stpart{border:1px solid var(--b09);border-radius:10px;margin-bottom:10px;overflow:hidden}
@@ -1952,7 +1970,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   // Karten-Selektor + Textquellen: pro Kartentyp nur Titel-/Meta-Zeilen (nie Knopf-
   // Beschriftungen oder Dossier-Text). Zeilen OHNE solche Felder (z. B. die Achsen-Zeile
   // der Status-Seite) werden nie gefiltert.
-  var SEARCH_ROWS = ".row,.jitem,.pcard,.arow,.mcard,.stq-row,.aps-row";
+  var SEARCH_ROWS = ".row,.jitem,.pcard,.pfcard,.arow,.mcard,.stq-row,.aps-row";
   function applySearchFilter(){
     var host = document.getElementById("viewhost"); if (!host) return;
     var line = host.querySelector(".sline"); if (!line) return;   // Portal-Untersichten o. ä.
@@ -3434,11 +3452,69 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var rel = it.updated ? pRel(it.updated) : "";
     /* abgeschlossene Vorgänge: Fit neutral — erledigt ist erledigt (Optik 2026-07-17) */
     var fc = it.phase==="sent" ? "done" : fitClass(it.fit);
+    /* Steckt-fest sichtbar schon in der Liste (user GO 2026-08-02): die Karte gehört
+       dann in „dein Tipp fehlt“, also muss die Zeile den Grund auch nennen */
+    var chip = pStuck(pJobs()[it.id] || {})
+      ? '<span class="stchip warnc">steckt fest — antippen</span>'
+      : pPhaseChip(it.phase);
     return '<div class="stq-row" style="cursor:pointer" data-pjob="'+esc(it.id)+'">'+
       (it.fit!=null ? '<div class="stq-fit '+fc+'">'+it.fit+"</div>" : '<div class="stq-num">–</div>')+
       '<div class="m"><div class="t">'+esc(it.title)+'</div><div class="s">'+esc(it.company)+
       (rel ? ' · '+esc(rel) : "")+"</div></div>"+
-      pPhaseChip(it.phase)+'<span class="stq-chev">›</span></div>';
+      chip+'<span class="stq-chev">›</span></div>';
+  }
+  /* Ordner-Karte (user GO 2026-08-02): ein Vorgang in Phase 'final' = ein Ordner in
+     Anschreiben/Bewerben/<Firma>/. Die Karte zeigt genau das — Inhalt (Anhang-Modus),
+     Liegedauer, Liveness-Hinweis, Ablage-Warnung — und trägt die Abarbeitungs-Knöpfe
+     direkt: Ordner öffnen, PDF ansehen, ✔ Versandt (trasht den Ordner + bucht das Log,
+     die Karte verschwindet — der Ordner-Lebenszyklus, 1:1). */
+  function pFolderAgeDays(j){
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String((j.filing && j.filing.ts) || j.updated || ""));
+    if (!m) return null;
+    var d = Math.floor((Date.now() - new Date(+m[1], +m[2]-1, +m[3]).getTime())/86400000);
+    return d >= 0 ? d : null;
+  }
+  function pFolderCardHTML(it){
+    var j = pJobs()[it.id] || {};
+    var dis = P.sending ? " disabled" : "";
+    var age = pFolderAgeDays(j);
+    var ageTxt = age==null ? "" : age===0 ? "heute abgelegt"
+      : age===1 ? "liegt seit gestern" : "liegt seit "+age+" Tagen";
+    var anOn = j.anhang ? j.anhang==="an"
+      : String((j.filing||{}).preset||"").toUpperCase()==="9B";
+    var pdfUrl = j.pdfUrl || (P.state && P.state.settings && P.state.settings.pdfFileUrl) || "";
+    var lc = String(j.liveClass||"").toLowerCase();
+    var h = '<div class="pfcard">'+
+      '<div class="pfhead" data-pjob="'+esc(it.id)+'">'+
+        '<span class="pficon">📁</span>'+
+        (it.fit!=null ? '<div class="stq-fit '+fitClass(it.fit)+'">'+it.fit+"</div>" : "")+
+        '<div class="m"><div class="t">'+esc(it.company||it.title)+'</div>'+
+        '<div class="s">'+esc(it.title)+"</div></div>"+
+        (ageTxt ? '<span class="pfage'+(age>=7?" warn":"")+'">'+esc(ageTxt)+(age>=7?" ⚠":"")+"</span>" : "")+
+        '<span class="stq-chev">›</span></div>';
+    h += '<div class="pfline">Im Ordner: '+(anOn
+      ? "eine Gesamtdatei (Bewerbungsunterlagen) — E-Mail-Kanal"
+      : "Einzeldateien (Anschreiben · Lebenslauf · Zeugnisse) — Portal-Kanal")+"</div>";
+    if (j.filingWarn) h += '<div class="pfwarn">'+esc(j.filingWarn)+"</div>";
+    /* Liveness-Ampel vom Ordner-Zettel (liveClass reist seit 2026-07-18 am Vorgang mit;
+       fail-safe red — Abwesenheit von Wissen darf nie wie „überwacht“ aussehen) */
+    if (lc === "initiativ")
+      h += '<div class="pfline">Initiativbewerbung — die ursprüngliche Anzeige ist offline.</div>';
+    else if (lc !== "ok")
+      h += '<div class="pfwarn">⚠ Anzeige vor dem Versand kurz öffnen — die Maschine kann nicht prüfen, ob sie noch online ist'+
+        (j.liveSeen ? " (von dir zuletzt gesehen am "+esc(j.liveSeen)+")" : "")+".</div>";
+    h += '<div class="pfacts">'+
+      (j.folderUrl ? '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(j.folderUrl)+'">📁 Ordner öffnen</a>' : "")+
+      (pdfUrl ? '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(pdfUrl)+'">PDF ansehen</a>' : "")+
+      (lc !== "ok" && lc !== "initiativ" && it.url
+        ? '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(it.url)+'">Anzeige öffnen</a>' : "")+
+      '<button class="stbtn warn" data-pversandt="'+esc(it.id)+'"'+dis+'>✔ Versandt</button>'+
+      (j.folderId
+        ? '<span class="sttog-row"><button class="sttog'+(anOn?" on":"")+'" role="switch" aria-checked="'+(anOn?"true":"false")+
+          '" aria-label="Anhang" data-panhang="'+(anOn?"aus":"an")+'" data-pid="'+esc(it.id)+'"'+dis+'></button>'+
+          '<span class="sttog-val">Anhang</span></span>' : "")+
+      "</div></div>";
+    return h;
   }
   function portalSetupHTML(){
     return '<div class="stq-cmds"><b>Tür verbinden</b> — einmal pro Gerät die Apps-Script-URL und deinen TOKEN eintragen (steht in deiner Einrichtung, SETUP-DOOR.md); bleibt nur in diesem Browser gespeichert.'+
@@ -3447,20 +3523,49 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       '<button class="stbtn primary" id="doorsave">Verbinden</button>'+
       '<div id="doorsavemsg" class="aps-legend" style="margin-top:6px"></div></div>';
   }
-  function portalSectionHTML(){
+  /* Fließband-Ansicht (user GO 2026-08-02): die Seite spiegelt den Ordner-Lebenszyklus —
+     vorgemerkt -> in Arbeit (Runden) -> im Bewerben-Ordner -> versandt (Ordner weg).
+     Stapel-Reihenfolge = Arbeitsreihenfolge: die fertigen Bewerbungen (Ordner) ganz oben,
+     ÄLTESTE zuerst (abarbeiten, nicht zuletzt-aktualisiert); „Runde bereit“ und
+     Steckt-fest darunter als schneller Tipp; Laufendes still; Versandt nur noch als
+     Wochen-Zeile + zugeklappter Verlauf (die Timeline lebt im Status-Tab). */
+  function portalSectionHTML(vmCount){
     if (!doorDataCfg()) return portalSetupHTML();
     if (!P.state) return '<div class="stq-head">Briefe</div><div class="emptybox">Lade Vorgänge …</div>';
-    var items = pAllItems(), b = { act:[], run:[], done:[] };
+    var items = pAllItems(), b = { folder:[], tap:[], run:[], done:[] };
     items.forEach(function(it){
-      if (it.phase==="round" || it.phase==="final") b.act.push(it);
+      if (it.phase==="final") b.folder.push(it);
       else if (it.phase==="sent") b.done.push(it);
+      else if (it.phase==="round" || pStuck(pJobs()[it.id] || {})) b.tap.push(it);
       else b.run.push(it);
     });
-    var h = '<div class="stq-head">Briefe — du bist dran <span class="c">'+b.act.length+"</span></div>";
-    h += b.act.length ? b.act.map(pRowHTML).join("")
-      : '<div class="emptybox">Keine Runde wartet — „Anschreiben“ an einer vorgemerkten Stelle startet ein Paket.</div>';
+    b.folder.sort(function(x,y){
+      var jx = pJobs()[x.id]||{}, jy = pJobs()[y.id]||{};
+      return String((jx.filing&&jx.filing.ts)||jx.updated||"")
+        .localeCompare(String((jy.filing&&jy.filing.ts)||jy.updated||""));
+    });
+    var h = '<div class="flowline"><b>'+(vmCount||0)+'</b> vorgemerkt → <b>'+
+      (b.tap.length+b.run.length)+'</b> in Arbeit → <b>'+b.folder.length+"</b> im Ordner</div>";
+    /* Rückmeldung der Karten-Aktionen (Versandt/Anhang) auch in der Listenansicht —
+       pFlashHTML lebte bisher nur in der Vorgangs-Untersicht */
+    if (P.flash && !P.view) h += pFlashHTML();
+    h += '<div class="stq-head">Im Bewerben-Ordner — rausschicken <span class="c">'+b.folder.length+"</span></div>";
+    h += b.folder.length ? b.folder.map(pFolderCardHTML).join("")
+      : '<div class="emptybox">Der Bewerben-Ordner ist leer — fertig gebaute Bewerbungen erscheinen hier zum Rausschicken.</div>';
+    h += '<div class="stq-head">In Arbeit — dein Tipp fehlt <span class="c">'+b.tap.length+"</span></div>";
+    h += b.tap.length ? b.tap.map(pRowHTML).join("")
+      : '<div class="aps-legend">Keine Runde wartet — „Anschreiben“ an einer vorgemerkten Stelle startet ein Paket.</div>';
     if (b.run.length) h += '<div class="stq-head">Läuft gerade <span class="c">'+b.run.length+"</span></div>"+b.run.map(pRowHTML).join("");
-    if (b.done.length) h += '<details class="alwfold"><summary>Erledigte Briefe <span class="c">'+b.done.length+"</span></summary>"+b.done.map(pRowHTML).join("")+"</details>";
+    if (b.done.length){
+      var week = b.done.filter(function(it){
+        var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(it.updated||""));
+        return !!m && (Date.now() - new Date(+m[1],+m[2]-1,+m[3]).getTime()) < 7*86400000;
+      }).length;
+      h += '<div class="aps-legend" style="margin-top:14px">Diese Woche versandt: '+week+
+        ' · <a href="#" data-nav="statuslog">zur Status-Seite</a></div>';
+      h += '<details class="alwfold"><summary>Versandt <span class="c">'+b.done.length+"</span></summary>"+
+        b.done.map(pRowHTML).join("")+"</details>";
+    }
     return h;
   }
   function portalViewHTML(){
@@ -4053,14 +4158,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         if (qi && qi.url) pBusyIds[qi.url] = 1;   // Vorgangs-Schlüssel ≠ URL abdecken
       });
       bew = bew.filter(function(it){ return !(pBusyIds[it.url] || pBusyIds[it.id]); });
-      var vmHead2 = '<div class="stq-head">Vorgemerkt <span class="c">'+bew.length+"</span></div>";
-      // Optik 2026-07-17: leeres Vorgemerkt nicht als große Box ÜBER den Briefen —
-      // dann rücken die Briefe nach oben und Vorgemerkt wird eine stille Zeile darunter.
-      if (bew.length)
-        html += vmHead2 + bew.map(function(it){ return mcardHTML(it,"bewerben"); }).join("") + portalSectionHTML();
-      else
-        html += portalSectionHTML() + vmHead2 +
-          '<div class="aps-legend">Nichts vorgemerkt — „Bewerben“ in Start oder Prüfen.</div>';
+      // Fließband-Reihenfolge (user GO 2026-08-02): erst die Vorgänge (Ordner oben,
+      // Runden darunter), Vorgemerkt IMMER unten — es ist der Anfang des Bands,
+      // nicht die dringendste Arbeit.
+      html += portalSectionHTML(bew.length);
+      html += '<div class="stq-head">Vorgemerkt — Brief starten <span class="c">'+bew.length+"</span></div>";
+      html += bew.length
+        ? bew.map(function(it){ return mcardHTML(it,"bewerben"); }).join("")
+        : '<div class="aps-legend">Nichts vorgemerkt — „Bewerben“ in Start oder Prüfen.</div>';
     } else if (doorGui()){
       html += vmHead;
       html += bew.length
@@ -4675,8 +4780,23 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     }
     var pc = e.target.closest("[data-pcmd]");
     if (pc){ portalCmd(pc.getAttribute("data-pcmd")); return; }
+    // Versandt direkt auf der Ordner-Karte (user GO 2026-08-02) — gleiche Semantik wie
+    // der Knopf in der Vorgangs-Untersicht, nur ohne den Umweg über „Details“.
+    var pvs = e.target.closest("[data-pversandt]");
+    if (pvs){
+      if (confirm("Bewerbung als VERSANDT verbuchen? (Scout-Markierung + Bewerbungslog, der Bewerbungsordner wird gelöscht, Vorgang wird geschlossen)")){
+        P.jobId = pvs.getAttribute("data-pversandt");
+        pComment("versandt", "Versandt gemeldet.");
+      }
+      return;
+    }
     var pah = e.target.closest("[data-panhang]");
-    if (pah){ portalAnhang(pah.getAttribute("data-panhang")); return; }
+    if (pah){
+      // data-pid = Anhang-Schalter auf der Ordner-Karte (Liste); ohne pid wie bisher
+      // der Schalter in der Vorgangs-Untersicht (P.jobId ist dort schon gesetzt).
+      var pahId = pah.getAttribute("data-pid");
+      if (pahId) P.jobId = pahId;
+      portalAnhang(pah.getAttribute("data-panhang")); return; }
     var po = e.target.closest("[data-popt]");
     if (po){ try { var pp = JSON.parse(po.getAttribute("data-popt")); P.sel[pp.p] = pp.c; renderAll(); } catch(err){} return; }
     var pd = e.target.closest("[data-pdc]");
