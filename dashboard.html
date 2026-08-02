@@ -3469,8 +3469,32 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     try { return JSON.parse(localStorage.getItem("jobscout-pjob-hidden") || "{}") || {}; }
     catch(e){ return {}; }
   }
+  /* Auto-Wiedereinblenden (user GO 2026-08-02 #3, der dexter-Fall): zeigt ein lokal
+     ausgeblendeter Vorgang NEUE Aktivität (updated-Stempel der Tür jünger als der
+     Ausblende-Moment — z.B. eine frische Anschreiben-Bestellung unter derselben
+     Vorgangs-id), fliegt er von selbst aus der Ausblende-Liste — eine alte lokale
+     Ausblendung darf nie eine neue Bestellung verschlucken. Asymmetrisch: ohne
+     lesbaren updated-Stempel bleibt ausgeblendet; Alt-Einträge ohne Zeitstempel
+     zählen als uralt (jede Aktivität blendet wieder ein). */
+  function pPruneHidden(){
+    var hid = pHiddenJobs(), J = pJobs(), drop = [];
+    Object.keys(hid).forEach(function(k){
+      var j = J[k];
+      if (!j) return;
+      var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(j.updated||""));
+      if (!m) return;
+      var up = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]).getTime();
+      var ts = typeof hid[k] === "number" ? hid[k] : 0;
+      if (up > ts) drop.push(k);
+    });
+    if (drop.length){
+      drop.forEach(function(k){ delete hid[k]; });
+      try { localStorage.setItem("jobscout-pjob-hidden", JSON.stringify(hid)); } catch(e){}
+    }
+    return hid;
+  }
   function pAllItems(){
-    var J = pJobs(), hid = pHiddenJobs();
+    var J = pJobs(), hid = pPruneHidden();
     return Object.keys(J).filter(function(k){ return !hid[k]; }).sort(function(a,b){
       return String(J[b].updated||"").localeCompare(String(J[a].updated||""));
     }).map(function(k){
@@ -3596,7 +3620,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     });
     var h = '<div class="flowline"><b>'+(vmCount||0)+'</b> vorgemerkt → <b>'+
       (b.tap.length+b.run.length)+'</b> in Arbeit → <b>'+b.folder.length+"</b> im Ordner</div>";
-    var hidN = Object.keys(pHiddenJobs()).filter(function(k){ return pJobs()[k]; }).length;
+    var hidN = Object.keys(pPruneHidden()).filter(function(k){ return pJobs()[k]; }).length;
     if (hidN) h += '<div class="aps-legend">'+hidN+' Vorgang/Vorgänge nur auf diesem Gerät ausgeblendet · '+
       '<a href="#" data-punhide>wieder einblenden</a></div>';
     /* Rückmeldung der Karten-Aktionen (Versandt/Anhang/Löschen) auch in der Listenansicht —
