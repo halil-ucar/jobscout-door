@@ -3855,18 +3855,23 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     }
     return h + pFlashHTML() + "</div>";
   }
-  /* Vorgang löschen (user GO 2026-08-02 #2): erst der echte Weg über die Tür
-     (action 'discard' entfernt den Job aus dem Tür-Zustand — überall weg); eine alte
-     Tür ohne die Aktion oder ein Fehlversand fällt auf GERÄTELOKALES Ausblenden zurück
-     (localStorage, Undo-Zeile über den Bereichen) — nie ein stiller Fehlschlag. Die
-     Scout-Datenbank (Treffer/Prüfliste/Marken) bleibt in beiden Fällen unberührt. */
+  /* Vorgang löschen (user GO 2026-08-02 #2, „überall" #3): der echte Weg über die Tür —
+     action 'discard' entfernt den Job aus dem Tür-Zustand UND (seit dem 2. Redeploy)
+     best-effort aus Drive: Bewerbungsordner, Zwischenspeicher-Varianten und die
+     Archivkopie(n) DIESES nie versandten Briefs in Alle/. Eine alte Tür ohne die Aktion
+     oder ein Fehlversand fällt auf GERÄTELOKALES Ausblenden zurück (localStorage,
+     Undo-Zeile über den Bereichen) — nie ein stiller Fehlschlag. Die Scout-Datenbank
+     (Treffer/Prüfliste/Marken) bleibt in allen Fällen unberührt. */
   function portalDiscard(id){
-    if (!confirm("Diesen Brief-Vorgang löschen?\n\nDie Stelle selbst bleibt in Scout-Datenbank und Merkliste unberührt — nur der Anschreiben-Vorgang verschwindet.")) return;
+    if (!confirm("Diesen Brief-Vorgang überall löschen?\n\nEntfernt den Vorgang aus der Liste und — falls vorhanden — auch den Bewerbungsordner in Drive samt Archivkopie des (nie versandten) Anschreibens. Die Stelle selbst bleibt in Scout-Datenbank und Merkliste unberührt.")) return;
     P.sending = true; P.flash = "Vorgang wird gelöscht …"; renderAll();
     doorApi("discard", { id: id })
-      .then(function(){
+      .then(function(j){
         if (P.state && P.state.jobs) delete P.state.jobs[id];
-        P.sending = false; P.flash = "Vorgang gelöscht.";
+        P.sending = false;
+        var tr = (j && j.trashed) || [];
+        P.flash = tr.length ? "Vorgang gelöscht — aus Drive mit entfernt: "+tr.join(", ")+"."
+                            : "Vorgang gelöscht.";
         renderAll();
       })
       .catch(function(e){
