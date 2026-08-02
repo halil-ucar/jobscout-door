@@ -3285,6 +3285,27 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var d = Math.floor(h/24);
     return d === 1 ? "gestern" : "vor "+d+" Tagen";
   }
+  /* Steckt-fest-Wächter (user GO 2026-08-02): ein PDF-Bau dauert ~3 Min., eine
+     Modell-Runde ~5–25 Min. Steht eine Karte deutlich länger in der Lauf-Phase,
+     ist der Lauf hart abgestürzt (der einzige Fall, in dem die Tür KEINE Meldung
+     bekommt) — dann Hinweis zeigen und die Knöpfe zurückgeben statt ewig „baut
+     PDF …". Zeitstempel ist Tür-Lokalzeit (Europe/Berlin), von Hand geparst
+     (Safari liest "YYYY-MM-DD HH:mm" nicht via new Date). Fail-safe: ohne
+     lesbaren Stempel gilt die Karte als NICHT festgesteckt. */
+  var P_STUCK_MIN = { "pdf-requested": 15, "requested": 45, "revising": 45 };
+  function pAgeMin(ts){
+    var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(ts||""));
+    if (!m) return null;
+    var t = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]).getTime();
+    var mnt = Math.floor((Date.now() - t)/60000);
+    return mnt >= 0 ? mnt : null;
+  }
+  function pStuck(j){
+    var lim = j && P_STUCK_MIN[j.phase];
+    if (!lim) return false;
+    var age = pAgeMin(j.updated);
+    return age != null && age >= lim;
+  }
   function pAllItems(){
     var J = pJobs();
     return Object.keys(J).sort(function(a,b){
@@ -3447,9 +3468,15 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       return h + pFlashHTML() + "</div>";
     }
     if (j.phase==="requested" || j.phase==="revising" || j.phase==="pdf-requested"){
-      h += '<div class="stnotice">'+(j.phase==="pdf-requested"
-        ? "Finales PDF wird gebaut (~1–1,5 Min.) …"
-        : "Der Lauf arbeitet — das Ergebnis erscheint hier automatisch.")+"</div>";
+      if (pStuck(j)){
+        h += '<div class="pshwarn">⚠️ <b>'+(j.phase==="pdf-requested" ? "Bau" : "Runde")+
+          ' steckt fest</b> — seit '+(esc(pRel(j.updated)) || "längerem")+
+          ' keine Rückmeldung, der Lauf ist vermutlich abgestürzt. Unten erneut senden.</div>';
+      } else {
+        h += '<div class="stnotice">'+(j.phase==="pdf-requested"
+          ? "Finales PDF wird gebaut (~1–1,5 Min.) …"
+          : "Der Lauf arbeitet — das Ergebnis erscheint hier automatisch.")+"</div>";
+      }
     }
     if (j.assumptions && j.assumptions.length){
       h += '<div class="stq-head">Annahmen</div>'+j.assumptions.map(function(a){
@@ -3539,7 +3566,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
        Feinschliff ins Leere, "PDF erneut" ohne Brief und "Versandt" ohne Ergebnis waren
        falsche Affordanzen); versandt -> Abschlusszeile statt toter Bedienelemente;
        "PDF erneut"/"Versandt" erst, wenn wirklich ein Brief existiert. */
-    var pBusy = j.phase==="requested" || j.phase==="revising" || j.phase==="pdf-requested";
+    var pBusy = (j.phase==="requested" || j.phase==="revising" || j.phase==="pdf-requested")
+                && !pStuck(j);
     var pHasLetter = !!j.letterText || j.phase==="final";
     if (j.phase==="sent"){
       h += '<div class="stdone"><b>Vorgang abgeschlossen</b> — versandt und gebucht.</div>';
