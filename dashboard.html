@@ -1956,6 +1956,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var host = document.getElementById("viewhost"); if (!host) return;
     var line = host.querySelector(".sline"); if (!line) return;   // Portal-Untersichten o. ä.
     var toks = String(searchQ[state.view]||"").toLowerCase().split(/\s+/).filter(Boolean);
+    // Treffer können in nativen <details>-Aufklappern liegen (z. B. „Erledigte Briefe“ im
+    // Bewerbungs-Portal, user 2026-08-02 #3): solche Eltern werden für einen Treffer
+    // geöffnet und mit data-sopen markiert; vor jedem Filterlauf werden NUR die markierten
+    // wieder geschlossen — ein vom Nutzer selbst geöffnetes <details> bleibt unangetastet.
+    var forced = host.querySelectorAll("details[data-sopen]");
+    for (var fd = 0; fd < forced.length; fd++){
+      forced[fd].open = false; forced[fd].removeAttribute("data-sopen");
+    }
     var rows = host.querySelectorAll(SEARCH_ROWS);
     var shown = 0, total = 0;
     for (var i = 0; i < rows.length; i++){
@@ -1978,7 +1986,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var tgt = (p && p !== host && !pcls && !p.id) ? p : el;
       tgt.classList.toggle("shide", !hit);
       if (tgt !== el) el.classList.remove("shide");   // Altzustand auf der Karte räumen
-      if (hit) shown++;
+      if (hit){
+        shown++;
+        if (toks.length){
+          for (var a = el.parentElement; a && a !== host; a = a.parentElement){
+            if (a.tagName === "DETAILS" && !a.open){ a.open = true; a.setAttribute("data-sopen","1"); }
+          }
+        }
+      }
     }
     var cnt = line.querySelector(".scount"), clr = line.querySelector(".sclear");
     if (cnt) cnt.textContent = toks.length ? shown+" von "+total : "";
