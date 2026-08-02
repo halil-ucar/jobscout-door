@@ -3409,10 +3409,26 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       return j;
     });
   }
+  /* Brief-Vorgänge sofort anzeigen (Fix 2026-08-03, der 10s-Hänger): der
+     Bewerbungen-Tab wartete bei jedem Seitenstart auf die Tür (Apps-Script-
+     Kaltstart 10-30s) und zeigte solange nur "Lade Vorgänge …". Der letzte
+     erfolgreich geladene Stand wird deshalb gerätelokal gepuffert und beim
+     Start SOFORT gerendert; der Live-Abruf ersetzt ihn still im Hintergrund
+     (das Tür-Banner sagt weiterhin ehrlich, wenn die Tür gerade nicht
+     antwortet — der Puffer ist reine Anzeige, nie eine Wahrheitsquelle). */
+  var P_STATE_CACHE = "jobscout-pstate";
+  function loadCachedPState(){
+    if (P.state) return;
+    try {
+      var c = JSON.parse(localStorage.getItem(P_STATE_CACHE) || "null");
+      if (c && c.state && c.state.jobs) P.state = c.state;
+    } catch(e){}
+  }
   function portalRefresh(){
     if (!DOOR_DASH || !doorDataCfg()) return Promise.resolve();
     return doorApi("state").then(function(j){
       P.state = j;
+      try { localStorage.setItem(P_STATE_CACHE, JSON.stringify({ ts: Date.now(), state: j })); } catch(e){}
       if (state.view==="bewerbungen" || P.view) renderAll();
     }).catch(function(e){ /* Störungen deckt das Tür-Banner ab */ });
   }
@@ -5154,6 +5170,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (/#newdc=1/.test(hash)){ P.nd = {}; P.ndWarn = null; P.view = "newdc"; state.view = "pruefseite"; took = true; }
       if (took) history.replaceState(null, "", location.pathname + location.search);
     })();
+    loadCachedPState();   // Sofort-Anzeige aus dem letzten Stand (Fix 2026-08-03)
     portalRefresh();
     setInterval(function(){
       if (document.visibilityState === "visible" && (state.view === "bewerbungen" || P.view)) portalRefresh();
