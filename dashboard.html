@@ -2407,14 +2407,21 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       }
     }
     if (sec==="rest") why += '<span class="whychip sweep">'+esc(sweepChip(it.raw||{}))+"</span>";
-    // Manueller Opus-Deep-Check (user GO 2026-07-09): nur für Stellen ohne Opus-Urteil und
-    // nur mit konfigurierter Google-Tür; nach Übermittlung zeigt der Stempel den Auftrag an.
-    // AUSNAHME (Gegen-Check-Härtung, user GO 2026-07-25): counterRevoked-Karten tragen zwar
-    // ein Opus-Urteil, aber Erst-Urteil und 2. Meinung widersprechen sich — der 🔍-Weg ist
-    // dort der designierte Stichentscheid und wird freigeschaltet.
+    // Manueller Opus-Deep-Check (user GO 2026-07-09; seit 2026-08-02 user GO auf JEDER
+    // offenen Prüflisten-Karte — die No-Opus-Urteil-Sperre ist aufgehoben, der Knopf steht
+    // rechts neben Offline auch auf voll geprüften Karten; nur mit konfigurierter
+    // Google-Tür). Ein Auftrag auf einer bereits bewerteten Karte bucht serverseitig wie
+    // jeder andere (apply_user_actions: unverified*-Status genügt) und das frische volle
+    // Opus-Urteil darf den Alt-Stand per Downgrade-Guard überschreiben. dcConsumed: trägt
+    // eine Karte ein Opus-Urteil, das JÜNGER/gleich alt wie ihr Bestell-Stempel ist, gilt
+    // der Auftrag als erledigt — sonst zeigte jede fertig geprüfte Karte für immer
+    // „angefordert“ statt des Knopfs (der Stempel bleibt auf dem Record stehen).
     var dcBtn = "";
-    if ((DOOR_DASH || doorGui()) && ((it.raw||{}).scoredBy !== "opus-deepcheck" || it.cr)){
-      dcBtn = (((it.raw||{}).deepcheckRequested && !dcoStale(it.raw||{})) || pDcReq[it.id])
+    if (DOOR_DASH || doorGui()){
+      var rdc = it.raw || {};
+      var dcConsumed = rdc.scoredBy === "opus-deepcheck" && !!rdc.deepcheckRequested
+        && String(rdc.lastChanged||"").slice(0,10) >= dcoDate(rdc.deepcheckRequested);
+      dcBtn = ((rdc.deepcheckRequested && !dcoStale(rdc) && !dcConsumed) || pDcReq[it.id])
         ? '<span class="checkchip" style="margin-top:0" title="Anzeigentext übermittelt — der nächste Lauf macht den vollen Opus-Check">Opus-Check angefordert</span>'
         : (DOOR_DASH
           ? '<button class="btn-g" data-pdc=\''+esc(JSON.stringify({ id:it.id, company:it.company||"", title:it.title||"", url:it.url||it.id||"" }))+'\' title="Anzeigentext hier einfügen — der nächste Lauf macht den vollen Opus-Deep-Check (Botwall-Stellen)">Opus-Check</button>'
