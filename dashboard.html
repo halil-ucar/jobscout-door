@@ -1920,10 +1920,26 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      EIN Suchfeld, das die Karten der Seite live filtert — Firma, Titel, Ort (die
      Titel-/Meta-Zeilen der Karten; Mehrwort-Suche = alle Wörter müssen vorkommen).
      Reine ANZEIGE wie alle Dashboard-Logik: nichts wird markiert, gebucht oder
-     gespeichert; die Abfrage lebt pro Reiter im Speicher der Sitzung. Beim Tippen wird
-     NICHT neu gerendert (der Fokus bliebe sonst nicht im Feld) — nur die Karten werden
-     ein-/ausgeblendet; ein Mark-Re-Render stellt Feld + Filter aus searchQ wieder her. */
+     gespeichert; die Abfrage lebt pro Reiter im Speicher der Sitzung. Beim Weitertippen
+     innerhalb einer Suche wird NICHT neu gerendert (der Fokus bliebe sonst nicht im
+     Feld) — nur die Karten werden ein-/ausgeblendet; ein Mark-Re-Render stellt Feld +
+     Filter aus searchQ wieder her. Einzig der Übergang leer<->nicht-leer rendert einmal
+     neu (searchRerender: Einklapp-Bereiche + Fokus-Rückgabe, siehe searchActive). */
   var searchQ = {};   // { viewKey: "abfrage" } — sitzungslokal, nie persistiert
+  // Aktive Suche = nicht-leere Abfrage auf dem aktuellen Reiter. Während der Suche rendern
+  // ALLE Einklapp-Bereiche (Prüfen-Gruppen, Archiv-Grund-Gruppen, Offline-Langliste,
+  // Lauf-Journal) ihre Karten mit — sonst kann die Suche eingeklappte Stellen weder finden
+  // noch zeigen (user 2026-08-02 #2). Der Einklapp-Zustand in state.open bleibt unberührt
+  // und gilt wieder, sobald die Suche geleert wird.
+  function searchActive(){ return !!String(searchQ[state.view]||"").trim(); }
+  // Beim Wechsel leer<->nicht-leer muss einmal NEU gerendert werden (Bereiche auf-/wieder
+  // zuklappen); der Fokus wird danach ins frisch gebaute Suchfeld zurückgesetzt, damit das
+  // Weitertippen nahtlos bleibt. Innerhalb einer aktiven Suche wird weiterhin NUR gefiltert.
+  function searchRerender(){
+    renderAll();
+    var si = document.querySelector("#viewhost .sline-in");
+    if (si){ si.focus(); try{ si.setSelectionRange(si.value.length, si.value.length); }catch(e){} }
+  }
   function searchLineHTML(){
     var q = searchQ[state.view] || "";
     return '<div class="sline">'+
@@ -2133,8 +2149,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     rids.forEach(function(rid){
       var d = digests[rid], rd = runDay(rid), key = "__jr_"+rid;
       // Neuester Lauf mit Zeilen: DEFAULT-OFFEN (data-sect-Semantik), ältere default zu.
+      // Bei aktiver Suche rendern alle Läufe ihre Zeilen (sonst unauffindbar).
       var isNewest = rid === newest;
-      var open = !!d.rows && (isNewest ? state.open[key] !== false : !!state.open[key]);
+      var open = !!d.rows && (searchActive() || (isNewest ? state.open[key] !== false : !!state.open[key]));
       var toggleAttr = d.rows ? (isNewest ? ' data-sect="'+esc(key)+'"' : ' data-asect="'+esc(key)+'"') : "";
       html += '<div class="jr"><span class="jdot'+(d.any?"":" empty")+'"></span>'+
         '<button class="jhead'+(d.rows?" tap":"")+'"'+toggleAttr+'>'+
@@ -2490,7 +2507,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     }
     function sect(key, dotColor, title, subtitle, tip, arr){
       if (!arr.length) return "";
-      var openS = state.open[key] !== false; // default OPEN; toggle collapses
+      // default OPEN; toggle collapses — bei aktiver Suche immer offen rendern
+      var openS = searchActive() || state.open[key] !== false;
       var h = '<button class="floorhead" data-sect="'+key+'" title="'+esc(tip||"")+'">'+
         '<span class="dot7" style="background:'+dotColor+'"></span>'+
         '<span class="l">'+title+'</span>'+
@@ -4196,7 +4214,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<span class="rtrack"><span class="rfill" style="width:'+Math.max(2, Math.round(n/gmax*100))+'%"></span></span>'+
         '<span class="rn">'+n+"</span>"+
         '<span class="tgl">'+(state.open[key] ? "einklappen" : "ausklappen")+"</span></button>";
-      if (state.open[key]) html += '<div class="listcard arclist bygrund">'+groups[r].map(arowHTML).join("")+"</div>";
+      if (searchActive() || state.open[key]) html += '<div class="listcard arclist bygrund">'+groups[r].map(arowHTML).join("")+"</div>";
     });
     html += "</div>";
     // --- Unter Fit-40: nur 12 Einträge — direkt sichtbar, kein Extra-Tap (user GO 2026-07-11;
@@ -4229,7 +4247,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           "</div>";
         }).join("")+"</div>";
       }
-      if (state.open["__arc_off__"]){
+      if (searchActive() || state.open["__arc_off__"]){
         state.runOrder.forEach(function(rid){
           var off = offAll.filter(function(it){ return it.run===rid; });
           if (!off.length) return;
@@ -4563,12 +4581,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
 
   document.addEventListener("click", function(e){
-    // Such-Zeile: × leert die Abfrage des aktiven Reiters (ohne Re-Render, Fokus zurück).
+    // Such-Zeile: × leert die Abfrage des aktiven Reiters. Re-Render nötig (klappt die
+    // während der Suche zwangsgeöffneten Bereiche wieder zu), Fokus kommt zurück.
     if (e.target.closest("[data-sclear]")){
       searchQ[state.view] = "";
-      var si = document.querySelector("#viewhost .sline-in");
-      if (si){ si.value = ""; si.focus(); }
-      applySearchFilter();
+      searchRerender();
       return;
     }
     var nav = e.target.closest("[data-nav]");
@@ -4752,11 +4769,15 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   });
 
   document.addEventListener("input", function(e){
-    // Such-Zeile (user GO 2026-08-02): beim Tippen NUR filtern, nie neu rendern —
-    // ein Re-Render würde den Fokus aus dem Feld werfen.
+    // Such-Zeile (user GO 2026-08-02): innerhalb einer aktiven Suche NUR filtern (ein
+    // Re-Render würde den Fokus aus dem Feld werfen). NUR am Übergang leer<->nicht-leer
+    // wird einmal neu gerendert (Einklapp-Bereiche auf-/wieder zuklappen), mit
+    // anschließender Fokus-Rückgabe (searchRerender).
     if (e.target && e.target.classList && e.target.classList.contains("sline-in")){
+      var wasActive = searchActive();
       searchQ[state.view] = e.target.value;
-      applySearchFilter();
+      if (searchActive() !== wasActive) searchRerender();
+      else applySearchFilter();
       return;
     }
     if (e.target && e.target.id === "stfeed") studio.feedDraft = e.target.value;
