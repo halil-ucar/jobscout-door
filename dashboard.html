@@ -1577,9 +1577,21 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   var PILL_QUIET_MS = 8000;   // normaler Flug ist in 1-2 s durch; danach ist Schweigen falsch
   var obFlushing = false, obFlushAt = 0, pushAt = 0, pillTimer = null;
   function latched(flag, since){ return flag && (Date.now() - since) < DOOR_LATCH_MS; }
+  /* Groessendeckel (user GO 2026-08-03): Deepcheck-Aktionen tragen bis zu 20 000 Zeichen
+     Anzeigentext. Der alte 40er-Schnitt konnte daraus einen POST von mehreren hundert KB
+     bauen — langsam und damit ein Kandidat fuer den 20-s-Wachhund, also genau die
+     Fehlschlaege, die die Warteschlange stranden liessen. Gebuendelt wird weiter (das ist
+     der Durchsatz-Vorteil beim schnellen Durchtippen), nur nicht mehr uebergross; eine
+     einzelne uebergrosse Aktion faehrt allein und wird nie blockiert. */
+  var OB_MAX_BYTES = 200000;
   function flushDoorOutbox(){
     if (!DOOR_DASH || latched(obFlushing, obFlushAt)) return;
-    var batch = doorOutbox().slice(0, 40);
+    var box = doorOutbox(), batch = [], bytes = 0;
+    for (var i = 0; i < box.length && batch.length < 40; i++){
+      var sz = String(JSON.stringify(box[i]) || "").length;
+      if (batch.length && bytes + sz > OB_MAX_BYTES) break;
+      batch.push(box[i]); bytes += sz;
+    }
     if (!batch.length) return;
     obFlushing = true; obFlushAt = Date.now();
     var key = function(x){ return String(x.id)+"|"+String(x.action)+"|"+(x.undo?"1":"0"); };
@@ -1588,10 +1600,52 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       .then(function(){
         saveDoorOutbox(doorOutbox().filter(function(x){ return !sent[key(x)]; }));
         obFlushing = false;
-        renderExportBar();
+        obRetryDelay = 0;           // Zustellung geglueckt -> Backoff zurueck auf Anfang
+        obRerender();               // "Im Versand" -> "an der Tuer" sichtbar machen
         flushDoorOutbox();          // Rest (falls während des Flugs neu markiert wurde)
       })
-      .catch(function(){ obFlushing = false; renderExportBar(); });
+      .catch(function(){
+        obFlushing = false;
+        renderExportBar();
+        scheduleOutboxRetry();      // stranden lassen war der Bug — jetzt wird nachgefasst
+      });
+  }
+  /* ZUSTELLUNGS-WAHRHEIT (user GO 2026-08-03) ------------------------------------
+     Eine Aktion, die noch in der Outbox liegt, ist NICHT an der Tür: flushDoorOutbox
+     entfernt sie ausschliesslich im Erfolgsfall. Vorher meldete die Prüf-Status-Box
+     jede Bestellung sofort als „Übermittelt“, obwohl der POST noch lief oder längst
+     gescheitert war — pdcShip schrieb den lokalen Zustand synchron und ignorierte den
+     Rückgabewert von doorShip, das seinerseits nach dem blossen Einreihen `true`
+     zurückgibt. Ergebnis (gemessen 2026-08-03): Opus-Checks standen tagelang als
+     „übermittelt“, während an der Tür nie ein Text ankam. Der Zustand wird deshalb aus
+     der Outbox ABGELEITET statt behauptet — kein zweiter Speicher, selbstheilend. */
+  var OB_STUCK_MS = 120000;    // normaler Flug ist in 1-2 s durch; 2 min => es klemmt
+  function dcOutboxPending(id){
+    var k = String(id);
+    return doorOutbox().some(function(x){
+      return String(x.id) === k && !x.undo &&
+             (x.action === "deepcheck" || x.action === "deepcheck-new");
+    });
+  }
+  /* Wiederholversand mit Backoff: der frühere .catch loeschte nur das Flug-Flag, und der
+     Nachschub haengt ausschliesslich am Erfolgs-Zweig — ein einziger Fehlschlag strandete
+     also alles, was dahinter in der Warteschlange lag (der Batch-Fall: 3 von 11 kamen
+     durch). Wiederholen ist gefahrlos, weil door.gs wartende Zwillinge dedupt. */
+  var obRetryTimer = null, obRetryDelay = 0;
+  function scheduleOutboxRetry(){
+    if (!DOOR_DASH || obRetryTimer || !doorOutbox().length) return;
+    obRetryDelay = obRetryDelay ? Math.min(obRetryDelay * 3, 120000) : 5000;
+    obRetryTimer = setTimeout(function(){ obRetryTimer = null; flushDoorOutbox(); }, obRetryDelay);
+  }
+  /* Neu zeichnen, ohne getippten Anzeigentext zu zerstoeren: die Batch-Textarea wird bei
+     renderAll aus P.dcDraft neu aufgebaut, ein Flush-Callback mitten im Tippen wuerde den
+     Text also verschlucken. Steht Text im Feld, bleibt es beim leichten Leisten-Update. */
+  function obRerender(){
+    try {
+      var ta = document.getElementById("pdctext");
+      if (ta && String(ta.value || "").trim()){ renderExportBar(); return; }
+      renderAll();
+    } catch(e){ try { renderExportBar(); } catch(e2){} }
   }
   function doorShip(acts){
     if (!acts.length) return false;
@@ -3306,9 +3360,13 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   var DCO_KEY = "jobscout-dc-orders";
   function dcoLoad(){ try{ return JSON.parse(localStorage.getItem(DCO_KEY)||"{}")||{}; }catch(e){ return {}; } }
   function dcoSave(m){ try{ localStorage.setItem(DCO_KEY, JSON.stringify(m)); }catch(e){} }
+  /* qat = Zeitpunkt des Einreihens (Millisekunden). Nur dafuer da, eine Bestellung, die
+     die Tuer nie erreicht hat, nach OB_STUCK_MS als "nicht angekommen" zu melden statt
+     sie weiter als uebermittelt auszugeben (user GO 2026-08-03). */
   function dcoAdd(id, co, ti, kind){ if (!id) return; var m = dcoLoad();
     m[String(id)] = { ts: new Date().toISOString().slice(0,10), co: String(co||"").slice(0,160),
-                      ti: String(ti||"").slice(0,160), kind: kind||"dc" }; dcoSave(m); }
+                      ti: String(ti||"").slice(0,160), kind: kind||"dc",
+                      qat: Date.now() }; dcoSave(m); }
   function dcoDrop(id){ var m = dcoLoad(); if (m[String(id)]){ delete m[String(id)]; dcoSave(m); } }
   function dcoHide(id){ var m = dcoLoad(); var k = String(id); m[k] = m[k]||{}; m[k].hide = 1; dcoSave(m); }
   function dcoDays(a,b){ var d = (new Date(b)-new Date(a))/864e5; return isFinite(d)?d:0; }
@@ -3350,6 +3408,11 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var st = "sent";
       if (e && e.scoredBy === "opus-deepcheck" && dcoDate(e.lastChanged) >= (o.ts||"")) st = "done";
       else if (e && e.deepcheckRequested) st = "booked";
+      // Zustellungs-Wahrheit (user GO 2026-08-03): solange die Aktion in der Outbox liegt,
+      // hat die Tür sie NICHT — dann ist "Übermittelt" schlicht gelogen. Frisch = "Im
+      // Versand", nach OB_STUCK_MS = "Nicht angekommen" mit Knopf zum Nachfassen.
+      else if (dcOutboxPending(id))
+        st = (o.qat && (Date.now() - o.qat) > OB_STUCK_MS) ? "stuck" : "queued";
       if (st === "done" && !o.done){ o.done = today; m[id] = o; changed = true; }
       if (st === "done" && o.done && dcoDays(o.done, today) > 7) return;
       if (st === "sent" && o.ts && dcoDays(o.ts, today) > 21){ delete m[id]; changed = true; return; }
@@ -3371,7 +3434,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         rows.push({ id: x.id, st: "done", ts: dcoDate(e.deepcheckRequested), it: x, co: x.company, ti: x.title });
     });
     if (changed) dcoSave(m);
-    var ord = { sent: 0, booked: 1, done: 2 };
+    // Nicht angekommene Bestellungen zuerst — sie sind das Einzige, was dich etwas angeht.
+    var ord = { stuck: -2, queued: -1, sent: 0, booked: 1, done: 2 };
     rows.sort(function(a,b){ return (ord[a.st]-ord[b.st]) || (a.ts<b.ts?-1:(a.ts>b.ts?1:0)); });
     return rows;
   }
@@ -3408,7 +3472,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     /* Wortlaut-Fix 2026-08-01: die ⏳-Stufe nannte nur den Rückfallweg („der nächste Lauf
        bucht"), obwohl im Normalfall sofort der Express-Lauf startet — am 30.07. las der
        Nutzer daraus „passiert erst im nächsten Lauf", während das Urteil längst da war. */
-    var CH = { sent:   ["⏳","Übermittelt","an die Tür übergeben — Express-Prüfung startet automatisch (Minuten); sonst bucht der nächste Lauf"],
+    var CH = { queued: ["📤","Im Versand","noch nicht von der Tür bestätigt — läuft automatisch weiter"],
+               stuck:  ["⚠️","Nicht angekommen",""],
+               sent:   ["⏳","Übermittelt","an die Tür übergeben — Express-Prüfung startet automatisch (Minuten); sonst bucht der nächste Lauf"],
                booked: ["🔄","In Prüfung","gebucht — Express-Lauf läuft (Minuten) bzw. nächster regulärer Lauf"],
                done:   ["✅","Fertig geprüft",""] };
     var BL = { treffer: "Treffer", unverif: "Prüfliste — deine Entscheidung",
@@ -3419,6 +3485,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var sub = c[1] + (r.ts ? " · bestellt " + esc(r.ts) : "");
       if (r.stale)
         sub += " — Prüfung nie fertig geworden; Anzeigentext bitte erneut über den 🔍-Knopf senden";
+      else if (r.st === "stuck")
+        sub += " — der Anzeigentext liegt noch hier und ist nie an der Tür angekommen";
       else if (r.st === "done" && r.it)
         sub += " · Fit " + r.it.fit + " → " + (BL[r.it.bucket] || r.it.bucket);
       else sub += " — " + c[2];
@@ -3426,7 +3494,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       h += '<div class="dcst-row"><span class="dcst-ic">'+c[0]+'</span>'+
         '<span class="dcst-m"><span class="t">'+esc(r.co)+(r.ti?" — "+esc(r.ti):"")+'</span>'+
         '<span class="s">'+sub+'</span>'+
-        (reason ? '<span class="s2">Grund: '+esc(reason)+'</span>' : "")+'</span>'+
+        (reason ? '<span class="s2">Grund: '+esc(reason)+'</span>' : "")+
+        (r.st === "stuck"
+          ? '<span class="s2"><a href="#" data-obretry>Jetzt erneut senden</a></span>' : "")+'</span>'+
         '<button class="dcst-x" data-dcohide="'+esc(r.id)+'" title="Zeile ausblenden">×</button></div>';
     });
     return h + "</div>";
@@ -4206,14 +4276,22 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var h = '<div class="view"><button class="btn-g" data-pback style="padding-left:0">'+
       (B ? "← Batch beenden" : "← Zurück")+"</button>";
     if (B){
-      var sent = Object.keys(B.sent).length;
+      var sentIds = Object.keys(B.sent);
+      var sent = sentIds.length;
+      /* Abschluss-Zähler (user GO 2026-08-03): „gesendet“ hiess bisher nur „getippt“. Beim
+         schnellen Durchrattern ist genau das die Frage, die man am Ende beantwortet haben
+         will — liegt wirklich ALLES an der Tür? „bestätigt“ = nicht mehr in der Outbox. */
+      var open = sentIds.filter(dcOutboxPending).length, ack = sent - open;
       if (sent >= B.items.length){
-        return h+'<div class="stq-cmds" style="margin-top:12px"><b>✓ Batch fertig</b> — '+sent+
-          ' Anzeigentext(e) übergeben; der nächste Lauf macht die vollen Opus-Checks (Ergebnis: Prüfliste, „Voll geprüft“).'+
+        return h+'<div class="stq-cmds" style="margin-top:12px"><b>✓ Batch fertig</b> — '+
+          ack+' von '+sent+' Anzeigentext(en) an der Tür bestätigt; der nächste Lauf macht die vollen Opus-Checks (Ergebnis: Prüfliste, „Voll geprüft“).'+
+          (open ? '<br><b>⚠️ '+open+' noch nicht angekommen</b> — läuft automatisch weiter; '+
+                  '<a href="#" data-obretry>jetzt erneut senden</a>.' : "")+
           (B.lastSent ? '<br><button class="stbtn" style="margin-top:8px" data-pdcundo>✗ Letzte Sendung rückgängig</button>' : "")+
           "</div></div>";
       }
-      h += '<div class="pagesub" style="margin:10px 0 2px">Opus-Check-Batch · Stelle '+(B.idx+1)+" von "+B.items.length+" · "+sent+" gesendet</div>";
+      h += '<div class="pagesub" style="margin:10px 0 2px">Opus-Check-Batch · Stelle '+(B.idx+1)+" von "+B.items.length+
+        " · "+ack+" von "+sent+" bestätigt"+(open ? " · "+open+" im Versand" : "")+"</div>";
     }
     h += '<div class="pagehead" style="font-size:20px;margin-top:'+(B?"2px":"10px")+'">Opus-Check: '+esc(d.company||"?")+"</div>"+
       '<div class="pagesub"><b>'+esc(d.title||"")+"</b> · Anzeige öffnen, kompletten Anzeigentext kopieren, hier einfügen — der nächste Lauf macht die volle Opus-Prüfung (Dossier + Fit).</div>"+
@@ -5159,7 +5237,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (e.target.closest("[data-obclear]")){ saveDoorOutbox([]); setTimeout(renderAll, 80); }
     // Tür-Dashboard: Pille = Nachversand-Knopf (stilles fetch-Retry, keine Navigation)
     var obr = e.target.closest("[data-obretry]");
-    if (obr){ e.preventDefault(); flushDoorOutbox(); syncSkipped = {}; pushMarks(); return; }
+    if (obr){
+      e.preventDefault();
+      // Manuelles Nachfassen schlaegt den Backoff: ein wartender Retry-Timer wuerde den
+      // Versuch sonst um bis zu zwei Minuten verzoegern, obwohl der Nutzer JETZT tippt.
+      if (obRetryTimer){ clearTimeout(obRetryTimer); obRetryTimer = null; }
+      obRetryDelay = 0;
+      flushDoorOutbox(); syncSkipped = {}; pushMarks(); return;
+    }
     // Störungs-Banner: „Erneut versuchen“ lädt die Tür-Daten neu
     var drt = e.target.closest("[data-doorretry]");
     if (drt){ e.preventDefault(); refresh(); return; }
