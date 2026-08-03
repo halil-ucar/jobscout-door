@@ -2104,6 +2104,12 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           '<button class="btn-p" data-mark="bewerben" data-id="'+esc(it.id)+'">Bewerben</button>'+
           '<button class="btn-g danger" data-mark="verworfen" data-id="'+esc(it.id)+'">Verwerfen</button>'+
           '<button class="btn-g" data-details="'+esc(it.id)+'">Details</button>'+
+          // Offline auch auf Treffer-Zeilen (user GO 2026-08-03, die Kelvion-Falsch-LIVE-
+          // Lektion): manche Boards beantworten tote Anzeigen mit 200-Redirect auf die
+          // Firmenseite — nur der Mensch sieht das. Gleiche Maschine wie in Prüfen
+          // (closed-user-offline; ein Repost reaktiviert automatisch).
+          '<button class="btn-g" data-mark="offline" data-id="'+esc(it.id)+'"'+
+            ' title="Anzeige ist weg — als Offline verbuchen (taucht die Rolle wieder auf, kommt sie automatisch zurück)">Offline</button>'+
           applogQuickBtnHTML(it)+
         "</div>"+
       "</div>"+
