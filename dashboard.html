@@ -5168,7 +5168,12 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (e.target.closest("[data-pnl]")){ state.noLive = !state.noLive; renderAll(); return; }
     if (e.target.closest("[data-plsall]")){ liveSeenAll(); return; }
     var dh = e.target.closest("[data-dcohide]");
-    if (dh){ dcoHide(dh.getAttribute("data-dcohide")); renderAll(); return; }
+    // dcoHide only marks the local order hidden in localStorage; pDcReq is the
+    // in-memory optimistic "angefordert" chip, seeded ONCE at page load. Without
+    // clearing it here the card's Opus-Check button stayed "angefordert" until a
+    // full reload even after the user dismissed the row (2026-08-03: an order whose
+    // ad text never reached the door left the button permanently disabled locally).
+    if (dh){ var hid = dh.getAttribute("data-dcohide"); dcoHide(hid); delete pDcReq[hid]; renderAll(); return; }
     // Prüfliste-Bereiche sind DEFAULT-OFFEN: toggle auf explizit false/true (nicht !undefined).
     var sc = e.target.closest("[data-sect]");
     if (sc){ var sid = sc.getAttribute("data-sect"); state.open[sid] = state.open[sid] === false; renderAll(); return; }
