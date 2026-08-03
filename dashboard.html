@@ -3790,6 +3790,23 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       (j ? pPhaseChip(j.phase) : "")+"</div>"+
       '<div style="margin:8px 0 14px"><a class="deep-open" target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">Stellenanzeige öffnen</a></div>';
     if (!j){
+      /* Stelle weg = STOPP (user 2026-08-03): eine geschlossene/aussortierte Anzeige
+         startet NIE automatisch ein Anschreiben — auch nicht still als Initiativ-
+         bewerbung. Initiativ gibt es nur noch über den ausdrücklichen Knopf hier
+         (der als expliziter Marker bis in den Brief-Lauf reist). */
+      var goneIt = itemById(id);
+      var goneSt = goneIt ? String(goneIt.status||"") : "";
+      if (goneSt.indexOf("closed")===0 || goneSt.indexOf("excluded")===0){
+        h += '<div class="pshwarn" style="margin:8px 0">⚠ <b>Diese Anzeige ist weg</b> ('+
+          (goneSt==="closed-user-offline" ? "von dir offline gemeldet" : "geschlossen/aussortiert")+
+          ') — es passiert nichts automatisch.</div>'+
+          '<div class="stactions">'+
+          '<button class="stbtn warn" data-pcmd="request-init"'+dis+
+          ' title="Ausdrücklich: Anschreiben als Initiativbewerbung bauen, obwohl die Anzeige offline ist">'+
+          'Initiativbewerbung ausdrücklich starten</button>'+
+          '</div>';
+        return h + pFlashHTML() + "</div>";
+      }
       /* Letzter Blick (user GO 2026-07-18): vor dem ersten Anschreiben-Schritt für eine Stelle
          OHNE Maschinen-Live-Beweis einmal die Anzeige öffnen lassen — nur der Mensch kann das
          hier prüfen. Fail-safe: fehlen die Felder (Queue kennt sie nicht), gilt „nicht belegt“. */
@@ -4006,14 +4023,18 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   }
   function portalCmd(cmd){
     var j = pJobs()[P.jobId] || {};
-    if (cmd === "request"){
+    if (cmd === "request" || cmd === "request-init"){
       var it = pQueueItem(P.jobId) || {};
-      // Liveness-Klasse für den Ordner-Zettel (user GO 2026-07-18) — fail-safe: unbekannt = red.
-      var llc = (String(it.status||"").indexOf("closed")===0 || String(it.status||"").indexOf("excluded")===0) ? "initiativ"
+      // Liveness-Klasse (Anzeige-Ampel der Ordner-Karte) — fail-safe: unbekannt = red.
+      // 'initiativ' NUR über den ausdrücklichen Knopf (user 2026-08-03); die frühere
+      // Auto-Ableitung aus closed*/excluded*-Status ist GESTRICHEN.
+      var isInit = cmd === "request-init";
+      var llc = isInit ? "initiativ"
         : (it.livenessConfirmed === true || String(it.sweepStatus||"").toUpperCase()==="LIVE") ? "ok" : "red";
       P.sending = true; P.flash = "wird gesendet …"; renderAll();
       doorApi("request", { id:P.jobId, company:it.company||"", title:it.title||"", url:it.url||P.jobId,
-                           liveClass: llc, liveSeen: String(it.deepcheckRequested||"").slice(0,10) })
+                           liveClass: llc, initiativ: isInit,
+                           liveSeen: String(it.deepcheckRequested||"").slice(0,10) })
         .then(function(){ P.sending = false; return portalRefresh(); })
         .catch(function(e){ P.sending = false; P.flash = "Fehler: "+e.message; renderAll(); });
       return;
