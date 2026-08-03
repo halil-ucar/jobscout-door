@@ -2555,7 +2555,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var rdc = it.raw || {};
       var dcConsumed = rdc.scoredBy === "opus-deepcheck" && !!rdc.deepcheckRequested
         && String(rdc.lastChanged||"").slice(0,10) >= dcoDate(rdc.deepcheckRequested);
-      dcBtn = ((rdc.deepcheckRequested && !dcoStale(rdc) && !dcConsumed) || pDcReq[it.id])
+      dcBtn = ((rdc.deepcheckRequested && !dcoStale(rdc) && !dcConsumed) || dcBlocks(it.id))
         ? '<span class="checkchip" style="margin-top:0" title="Anzeigentext übermittelt — der nächste Lauf macht den vollen Opus-Check">Opus-Check angefordert</span>'
         : (DOOR_DASH
           ? '<button class="btn-g" data-pdc=\''+esc(JSON.stringify({ id:it.id, company:it.company||"", title:it.title||"", url:it.url||it.id||"" }))+'\' title="Anzeigentext hier einfügen — der nächste Lauf macht den vollen Opus-Deep-Check (Botwall-Stellen)">Opus-Check</button>'
@@ -2640,7 +2640,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (DOOR_DASH || doorGui()){
       var dcbCands = g.nachsehen.filter(function(it){
         var r = it.raw || {};
-        return r.scoredBy !== "opus-deepcheck" && !(r.deepcheckRequested && !dcoStale(r)) && !pDcReq[it.id];
+        return r.scoredBy !== "opus-deepcheck" && !(r.deepcheckRequested && !dcoStale(r)) && !dcBlocks(it.id);
       }).slice(0, 80).map(function(it){
         return { id: it.id, company: it.company||"", title: it.title||"", url: it.url||it.id||"", fit: it.fit };
       });
@@ -3378,6 +3378,27 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   // ist lokal und git-ignoriert). Der 🔍-Knopf kommt dann WIEDER (statt ewig „angefordert“
   // zu zeigen), und eine Neu-Sendung bucht serverseitig als Neulieferung
   // (apply_user_actions: _redelivery — neueres Datum + Text schlägt den Alt-Stempel).
+  /* SELBSTFREIGABE (user 2026-08-03: „Ich kann das nicht anfordern"). Der optimistische
+     „angefordert“-Chip lebte bis zum manuellen × weiter und sperrte den 🔍-Knopf UND die
+     Batch-Lane unbegrenzt — auch dann, wenn die Bestellung nachweislich nichts bewirkt
+     hat (am 03.08. wurden acht Bestellungen verbraucht, ohne je einen Stempel zu
+     erzeugen; die Karten blieben danach dauerhaft gesperrt). Eine lokale Bestellung
+     sperrt deshalb nur noch, solange sie plausibel IN ARBEIT ist:
+       - sie liegt noch in der Outbox (Versand läuft), ODER
+       - seit ihr ist noch kein Lauf durchgelaufen.
+     Ist seither ein Lauf gelaufen und die Daten zeigen weder Stempel noch frisches
+     Urteil, hat die Bestellung nicht gegriffen -> Knopf kommt von selbst zurück.
+     Asymmetrisch gewählt: eine zu früh freigegebene Bestellung kostet höchstens eine
+     doppelte Sendung (die Tür dedupt, apply bucht sie als already-done), eine zu lange
+     gesperrte Karte strandet den Nutzer — genau der gemeldete Fall. */
+  function dcBlocks(id){
+    if (!pDcReq[id]) return false;
+    var o = dcoLoad()[String(id)] || {};
+    if (o.hide) return false;
+    if (dcOutboxPending(id)) return true;          // Versand läuft noch
+    var last = String((state.meta && state.meta.lastRun) || "");
+    return !(last && last > String(o.ts || ""));   // kein Lauf seither -> weiter sperren
+  }
   function dcoStale(e){
     var d = dcoDate((e||{}).deepcheckRequested);
     return !!d && (e||{}).scoredBy !== "opus-deepcheck"
