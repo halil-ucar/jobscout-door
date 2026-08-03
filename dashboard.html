@@ -2342,8 +2342,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (col==="bewerben"){
       // Der ✉-Vormerk-Toggle ist entfernt (user 2026-07-11): Anschreiben laufen NUR noch
       // über die Tür — der Link öffnet sie direkt mit dieser Stelle (#req-Deep-Link).
-      extra = '<button class="btn-applied" data-mark="beworben" data-id="'+esc(it.id)+'">Bereits beworben</button>'+
-        (DOOR_DASH
+      // „Bereits beworben" hier ENTFERNT (user 2026-08-03): die Vorgemerkt-Karte trägt nur
+      // noch „Anschreiben" (+ X) — die Schnellbuchung lebt auf den Log-Badge-Karten
+      // (applogQuickBtnHTML in Start/Prüfen).
+      extra = (DOOR_DASH
           ? '<button class="btn-letter" data-preq=\''+esc(JSON.stringify({ id:it.url||it.id, url:it.url||it.id, company:it.company||"", title:it.title||"", fit:(it.fit!=null?it.fit:null) }))+'\' title="Anschreiben-Paket hier anfordern (Optionsrunde, PDF, Versandt)">Anschreiben</button>'
           : (doorGui() ? '<a class="btn-letter" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(doorReqUrl(it))+'" title="Öffnet die Bewerbungs-Tür mit dieser Stelle — dort Paket anfordern (Optionsrunde, PDF, Versandt)">In der Tür öffnen</a>' : ""));
     }
