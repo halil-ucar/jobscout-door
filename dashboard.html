@@ -276,6 +276,8 @@ a{color:inherit;text-decoration:none}
 .alwfold[open] summary::after{content:"einklappen"}
 .alwfold summary:hover,.alwfold[open] summary{color:var(--ink)}
 .rmeta{font-size:12.5px;color:var(--meta);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* FIT-RUBRIK-Zerlegung (user GO 2026-08-02): kompakte a..f-Zeile unter der Meta-Zeile */
+.fbline{font-size:11px;color:var(--dim-meta);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}
 .rfit{flex:none;text-align:center;width:46px}
 .rfit .n{font:600 13.5px var(--mono);line-height:1;display:inline-block;
   padding:5px 0;width:44px;border-radius:999px;font-variant-numeric:tabular-nums;
@@ -1103,7 +1105,23 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
     .replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   function idOf(e){ return e.url || ((e.company||"") + "|" + (e.title||"")); }
-  function fitClass(f){ return f>=80 ? "fitc-h" : f>=60 ? "fitc-m" : "fitc-l"; }
+  /* Farbgrenzen = Entscheidungsgrenzen (user GO 2026-08-02, Rubrik-Paket): >=75 Initiativ-
+     Niveau, >=50 Treffer-Boden — vorher 80/60, wodurch ein bestätigter 55er-Treffer die
+     niedrigste Farbstufe trug. */
+  function fitClass(f){ return f>=75 ? "fitc-h" : f>=50 ? "fitc-m" : "fitc-l"; }
+  /* FIT-RUBRIK-Zerlegungszeile (user GO 2026-08-02): kompakte a..f-Zeile auf Karten, deren
+     Urteil die sechs Teilwerte trägt; Labels synchron mit RUBRIC_MAX im Workflow. */
+  var FB_DEF = [["a","Rolle",30],["b","Deckung",25],["c","Fokus",15],["d","Einstieg",12],["e","Ort",10],["f","Rahmen",8]];
+  function fbLine(it){
+    if (!it || !it.fb) return "";
+    var parts = [];
+    for (var i=0;i<FB_DEF.length;i++){
+      var k=FB_DEF[i][0], v=it.fb[k];
+      if (typeof v !== "number" || !isFinite(v)) return "";
+      parts.push(FB_DEF[i][1]+" "+Math.round(v)+"/"+FB_DEF[i][2]);
+    }
+    return '<div class="fbline" title="Fit-Zerlegung (Rubrik seit 02.08.2026)">'+parts.join(" · ")+"</div>";
+  }
   function mainOpen(it, cls){
     return it.url
       ? '<a class="'+cls+' rmain-link" href="'+esc(it.url)+'" target="_blank" rel="noopener noreferrer">'
@@ -1316,6 +1334,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         company: e.company || (e.source === "manual-user" && e.url ? hostOfUrl(e.url) : "") || "Unbekannt",
         title: e.title || (e.source === "manual-user" ? "Neue Stelle — Titel folgt aus dem Opus-Check" : "Ohne Titel"),
         fit: Math.max(0, Math.min(100, Math.round(Number(e.fitScore)||0))),
+        /* FIT-RUBRIK (user GO 2026-08-02): die sechs Code-summierten Teilwerte (a..f) für die
+           Zerlegungszeile; Einträge ohne das Feld sind Vor-Rubrik-Urteile (keine Zeile). */
+        fb: (e.fitBreakdown && typeof e.fitBreakdown === "object") ? e.fitBreakdown : null,
         // "Bewertung von Sonnet": rough Kurzcheck score, no Opus deep-check. New records carry
         // scoredBy; legacy Kurzcheck entries are detected by their dossier heading.
         sonnet: e.scoredBy === "sonnet-kurzcheck" ||
@@ -2098,7 +2119,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       '<div class="row">'+
         '<div class="rfit"><div class="n '+fitClass(it.fit)+'">'+it.fit+'</div><div class="l">Fit</div></div>'+
         mainOpen(it,"rmain")+'<div class="rtitle-line"><span class="rtitle">'+esc(it.title)+"</span>"+nChip+chip+sChip+wsChip+bChip+cpChip+crChip+lChip+"</div>"+
-          '<div class="rmeta">'+esc(it.metaLine)+"</div>"+mainClose(it)+
+          '<div class="rmeta">'+esc(it.metaLine)+"</div>"+fbLine(it)+mainClose(it)+
         '<div class="racts">'+
           starHTML(it)+
           '<button class="btn-p" data-mark="bewerben" data-id="'+esc(it.id)+'">Bewerben</button>'+
@@ -2490,7 +2511,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       '<div class="pcard-h">'+
       '<div class="pfit"><b class="'+fitClass(it.fit)+'">'+it.fit+"</b><span> / 100</span></div>"+
       mainOpen(it,"pmain")+'<div class="t">'+esc(it.title)+"</div>"+
-        '<div class="s">'+esc(it.metaLine)+"</div>"+mainClose(it)+"</div>"+
+        '<div class="s">'+esc(it.metaLine)+"</div>"+fbLine(it)+mainClose(it)+"</div>"+
       (why ? '<div class="whyrow" title="Grund, warum diese Stelle (noch) kein Treffer ist">'+why+"</div>" : "")+
       alwBox+
       // „Offline“-Endmarke (user GO 2026-07-18; seit 2026-08-02 user GO IMMER sichtbar —
