@@ -1454,6 +1454,16 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       ? '<span class="markchip logchip" title="Diese Rolle steht in deinem Bewerbungslog (Status: '+esc(m.status)+') — nicht doppelt bewerben.">laut Log beworben'+d+'</span>'
       : '<span class="markchip logchip soft" title="Eine andere Rolle dieser Firma steht in deinem Bewerbungslog (Status: '+esc(m.status)+').">Firma im Bewerbungslog'+d+'</span>';
   }
+  /* Ein-Tipp-Verbuchung auf Log-Badge-Karten (user GO 2026-08-03): trägt eine Karte den
+     Bewerbungslog-Abgleich (grün = Rolle, grau = Firma), gibt es direkt daneben
+     „➤ Bereits beworben" — statt des Umwegs Bewerben -> Bewerbungen-Tab -> Bereits
+     beworben. Bewusst KEIN Automatismus: bei grauen Treffern kann die Rolle eine andere
+     sein (zweite Bewerbung legitim), die Entscheidung bleibt sichtbar beim Nutzer. */
+  function applogQuickBtnHTML(it){
+    if (!applogMatch(it)) return "";
+    return '<button class="btn-g" data-mark="beworben" data-id="'+esc(it.id)+'"'+
+      ' title="Als bereits beworben verbuchen (laut Bewerbungslog) — die Stelle verlässt die offenen Listen; im Log entsteht kein Doppel-Eintrag">➤ Bereits beworben</button>';
+  }
   /* Sofort-Transport Handy -> Drive (user GO 2026-07-09): eine finale Markierung fliegt beim
      Antippen über die Door-GUI (GitHub Pages) an door.gs und landet in der Drive-Aktionsdatei —
      der nächste Lauf verbucht sie. Das claude.ai-Artefakt darf selbst nicht fetchen (CSP),
@@ -2094,6 +2104,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           '<button class="btn-p" data-mark="bewerben" data-id="'+esc(it.id)+'">Bewerben</button>'+
           '<button class="btn-g danger" data-mark="verworfen" data-id="'+esc(it.id)+'">Verwerfen</button>'+
           '<button class="btn-g" data-details="'+esc(it.id)+'">Details</button>'+
+          applogQuickBtnHTML(it)+
         "</div>"+
       "</div>"+
       (open ? '<div class="deepwrap">'+deepPanelHTML(it)+"</div>" : "")+
@@ -2485,6 +2496,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         '<button class="btn-g" data-details="'+esc(it.id)+'">Details</button>'+
         '<button class="btn-act aoff" data-mark="offline" data-id="'+esc(it.id)+'">Offline</button>'+
         dcBtn+
+        applogQuickBtnHTML(it)+
         (chipTxt ? '<span class="checkchip" style="margin-top:0">Markiert: '+chipTxt+"</span>" : "")+
       "</div>"+
       (open ? deepPanelHTML(it)+
