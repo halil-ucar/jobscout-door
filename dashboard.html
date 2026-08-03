@@ -3725,12 +3725,26 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (P.view === "newdc") return portalNewDcHTML();
     return "";
   }
-  function portalOpenJob(d){
+  function portalOpenJob(d, auto){
     P.jobId = d.id || d.url;
-    P.sel = {}; P.flash = ""; P.feedDraft = ""; P.view = "job"; state.view = "bewerbungen";
+    P.sel = {}; P.flash = ""; P.feedDraft = "";
+    P.view = "job"; state.view = "bewerbungen";
     if (!pQueueItem(P.jobId) && P.state && !pJobs()[P.jobId]){
       P.state.queue = [{ id:P.jobId, url:d.url||P.jobId, company:d.company||"",
                          title:d.title||"", fitScore:(d.fit!=null?d.fit:null) }].concat(P.state.queue||[]);
+    }
+    /* Direkt-Start (user 2026-08-03, „direkt auf Anschreiben drücken und fertig"):
+       der Tipp fordert das Paket SOFORT an — kein Zwischenstopp, kein zweiter Knopf,
+       auch der blockierende Letzter-Blick-Schritt ist auf diesem Weg GESTRICHEN (die
+       Liveness-Warnung bleibt als Hinweis auf Karte und Ordner). Einzige Ausnahme:
+       tote Anzeigen (Status closed oder excluded) zeigen weiter die STOPP-Ansicht —
+       „wenn die Stelle weg ist, passiert nichts automatisch" (user GO vom selben
+       Tag). Läuft schon ein Vorgang, öffnet der Tipp ihn wie bisher nur. */
+    if (auto === true && !pJobs()[P.jobId]){
+      var g = itemById(P.jobId), gs = g ? String(g.status||"") : "";
+      if (!(gs.indexOf("closed")===0 || gs.indexOf("excluded")===0)){
+        portalCmd("request"); return;
+      }
     }
     renderAll();
   }
@@ -3827,29 +3841,29 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           '</div>';
         return h + pFlashHTML() + "</div>";
       }
-      /* Letzter Blick (user GO 2026-07-18): vor dem ersten Anschreiben-Schritt für eine Stelle
-         OHNE Maschinen-Live-Beweis einmal die Anzeige öffnen lassen — nur der Mensch kann das
-         hier prüfen. Fail-safe: fehlen die Felder (Queue kennt sie nicht), gilt „nicht belegt“. */
+      /* Letzter-Blick ENTSCHÄRFT (user 2026-08-03, „direkt auf Anschreiben drücken und
+         fertig"): der frühere BLOCKIERENDE Zwischenschritt (user GO 2026-07-18) ist
+         gestrichen — die Liveness-Warnung bleibt als Hinweis (plus Offline-Ausweg),
+         der Start-Knopf steht immer da. Normal fliegt der „Anschreiben"-Tipp per
+         Direkt-Start ohne Halt durch; diese Ansicht erscheint praktisch nur noch,
+         wenn der Auftrag scheiterte (Tür-Fehler) oder beim Wiederöffnen. */
       var llProvable = !!(it && (it.livenessConfirmed === true ||
         String((it.sweepStatus||"")).toUpperCase() === "LIVE"));
-      if (!llProvable && !P.lastLook[id]){
+      if (!llProvable){
         var llSeen = String((it&&it.deepcheckRequested)||"").slice(0,10);
         var llAge = llSeen ? daysSinceStamp(llSeen) : null;
         h += '<div class="pshwarn" style="margin:8px 0">⚠ <b>Liveness nicht automatisch prüfbar.</b> '+
           'Die Maschine kann nicht wissen, ob diese Anzeige noch online ist'+
           (llSeen ? ' — von dir zuletzt gelesen am '+esc(llSeen)+
             (llAge!=null && llAge>=7 ? ' (<b>vor '+llAge+' Tagen!</b>)' : '') : '')+
-          '. Öffne sie kurz, bevor das Anschreiben entsteht.</div>'+
-          '<div class="stactions">'+
-          '<a class="stbtn" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">Anzeige öffnen</a>'+
-          '<button class="stbtn primary" data-plastlook="'+esc(String(id))+'">Eben geöffnet — noch online ✓</button>'+
-          '<button class="stbtn warn" data-poffline="'+esc(String(id))+'" title="Bucht die Offline-Marke (closed-user-offline) — die Karte verlässt die Prüfliste; taucht die Rolle wieder auf, wird sie automatisch reaktiviert">Anzeige ist weg → Offline melden</button>'+
-          '</div>';
-        return h + pFlashHTML() + "</div>";
+          '. Öffne sie kurz, bevor du das fertige PDF verschickst.</div>';
       }
-      /* Entrümpelung 2026-07-17: der Knopf sagt alles — die Erklärprosa ist weg,
-         die Wartezeit wandert als einzige Zusatzinfo auf den Knopf */
-      h += '<div class="stactions"><button class="stbtn primary" data-pcmd="request"'+dis+'>Paket anfordern (~4–5 Min.)</button></div>';
+      h += '<div class="stactions">'+
+        '<button class="stbtn primary" data-pcmd="request"'+dis+'>Paket anfordern (~4–5 Min.)</button>'+
+        (!llProvable
+          ? '<button class="stbtn warn" data-poffline="'+esc(String(id))+'" title="Bucht die Offline-Marke (closed-user-offline) — die Karte verlässt die Prüfliste; taucht die Rolle wieder auf, wird sie automatisch reaktiviert">Anzeige ist weg → Offline melden</button>'
+          : '')+
+        '</div>';
       return h + pFlashHTML() + "</div>";
     }
     if (j.phase==="requested" || j.phase==="revising" || j.phase==="pdf-requested"){
@@ -5028,7 +5042,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var pj = e.target.closest("[data-pjob]");
     if (pj){ portalOpenJob({ id: pj.getAttribute("data-pjob") }); return; }
     var pr = e.target.closest("[data-preq]");
-    if (pr){ try { portalOpenJob(JSON.parse(pr.getAttribute("data-preq"))); } catch(err){} return; }
+    if (pr){ try { portalOpenJob(JSON.parse(pr.getAttribute("data-preq")), true); } catch(err){} return; }
     if (e.target.closest("[data-pback]")){
       P.view = null; P.dc = null; P.dcb = null; P.dcDraft = ""; P.dcWarn = null; P.flash = "";
       renderAll(); return;
