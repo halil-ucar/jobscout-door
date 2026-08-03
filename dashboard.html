@@ -2554,7 +2554,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (DOOR_DASH || doorGui()){
       var rdc = it.raw || {};
       var dcConsumed = rdc.scoredBy === "opus-deepcheck" && !!rdc.deepcheckRequested
-        && String(rdc.lastChanged||"").slice(0,10) >= dcoDate(rdc.deepcheckRequested);
+        && dcScoredOn(rdc) >= dcoDate(rdc.deepcheckRequested);
       dcBtn = ((rdc.deepcheckRequested && !dcoStale(rdc) && !dcConsumed) || dcBlocks(it.id))
         ? '<span class="checkchip" style="margin-top:0" title="Anzeigentext übermittelt — der nächste Lauf macht den vollen Opus-Check">Opus-Check angefordert</span>'
         : (DOOR_DASH
@@ -3399,6 +3399,12 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var last = String((state.meta && state.meta.lastRun) || "");
     return !(last && last > String(o.ts || ""));   // kein Lauf seither -> weiter sperren
   }
+  /* Wann wurde zuletzt BEWERTET? lastChanged bewegt sich nur bei Status-Wechsel — ein
+     Nachcheck, der das alte Urteil BESTAETIGT, hinterliess dort keine Spur (esposito,
+     03.08.: neu bestellt, voll neu geprueft, Fit 83, Status unveraendert -> die
+     Bestellung stand ewig auf "In Pruefung"). persist_run stempelt deshalb scoredAt bei
+     JEDER Bewertung; fehlt das Feld, ist es ein Alt-Urteil -> Rueckfall auf lastChanged. */
+  function dcScoredOn(e){ return dcoDate((e && (e.scoredAt || e.lastChanged)) || ""); }
   function dcoStale(e){
     var d = dcoDate((e||{}).deepcheckRequested);
     return !!d && (e||{}).scoredBy !== "opus-deepcheck"
@@ -3427,7 +3433,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (o.hide) return;
       var it = dcoItemFor(id, o), e = it ? (it.raw||{}) : null;
       var st = "sent";
-      if (e && e.scoredBy === "opus-deepcheck" && dcoDate(e.lastChanged) >= (o.ts||"")) st = "done";
+      if (e && e.scoredBy === "opus-deepcheck" && dcScoredOn(e) >= (o.ts||"")) st = "done";
       else if (e && e.deepcheckRequested) st = "booked";
       // Zustellungs-Wahrheit (user GO 2026-08-03): solange die Aktion in der Outbox liegt,
       // hat die Tür sie NICHT — dann ist "Übermittelt" schlicht gelogen. Frisch = "Im
@@ -3450,8 +3456,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (e.scoredBy !== "opus-deepcheck" && x.bucket === "unverif")
         rows.push({ id: x.id, st: "booked", ts: dcoDate(e.deepcheckRequested), it: x,
                     stale: dcoStale(e), co: x.company, ti: x.title });
-      else if (e.scoredBy === "opus-deepcheck" && dcoDate(e.lastChanged) >= dcoDate(e.deepcheckRequested)
-               && dcoDays(dcoDate(e.lastChanged), today) <= 7)
+      else if (e.scoredBy === "opus-deepcheck" && dcScoredOn(e) >= dcoDate(e.deepcheckRequested)
+               && dcoDays(dcScoredOn(e), today) <= 7)
         rows.push({ id: x.id, st: "done", ts: dcoDate(e.deepcheckRequested), it: x, co: x.company, ti: x.title });
     });
     if (changed) dcoSave(m);
