@@ -594,6 +594,22 @@ a{color:inherit;text-decoration:none}
   transition:color .12s ease,background .12s ease,border-color .12s ease}
 .aps-btn:hover{color:var(--ink);background:var(--hover)}
 .aps-btn.on{color:var(--ink);border-color:var(--ink)}
+/* Notiz-Zeile (user 2026-08-13): freies Textfeld je Bewerbung — reist als note-Feld der
+   Statusmeldung und landet in der Notizen-Spalte des Bewerbungslogs. */
+.aps-pen{flex:none;font-size:12px;color:var(--meta);background:transparent;border:1px solid transparent;
+  border-radius:999px;padding:3.5px 7px;cursor:pointer;transition:color .12s ease,background .12s ease}
+.aps-pen:hover{color:var(--ink);background:var(--hover)}
+.aps-pen.open{color:var(--ink);border-color:var(--b18)}
+.aps-noterow{display:flex;gap:6px;align-items:center;margin:2px 0 8px}
+.aps-notein{flex:1;min-width:0;padding:6px 9px;border:1px solid var(--b18);border-radius:8px;
+  background:transparent;color:var(--ink);font:inherit;font-size:12.5px}
+.aps-notein::placeholder{color:var(--mut1)}
+.aps-notein:focus{outline:2px solid var(--ink);outline-offset:1px}
+.aps-nsend{flex:none;font-size:11.5px;font-weight:600;color:var(--meta);background:transparent;
+  border:1px solid var(--b18);border-radius:999px;padding:4px 10px;cursor:pointer;white-space:nowrap}
+.aps-nsend:hover{color:var(--ink);background:var(--hover)}
+.aps-nok{flex:none;font-size:11px;font-weight:600;color:var(--green);white-space:nowrap}
+.aps-nfail{flex:none;font-size:11px;font-weight:600;color:var(--amber);white-space:nowrap}
 .aps-src{font-size:11px;color:var(--mut3);margin-top:8px}
 @media (max-width:640px){
   .aps-row{flex-wrap:wrap;row-gap:5px}
@@ -1089,6 +1105,17 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      partitioniert die id am ersten "\n" und bucht dann rollengenau (set_status rolle=). */
   function logmarkRolle(r){ r = String(r==null?"":r).trim(); return (r && r !== "-") ? r : ""; }
   function logmarkKey(e){ var r = logmarkRolle(e.rolle); return e.key + (r ? "\n" + r : ""); }
+  /* Notiz-Feld je Zeile (user 2026-08-13, „Aufgabe bekommen, die ich nicht machen
+     möchte"): Entwürfe leben in-memory je Zeilen-Key (überleben jedes Re-Render;
+     ein Neuladen verwirft nur UNGESENDETE Entwürfe), Sende-Quittungen dito. Die
+     Notiz reist im vorhandenen note-Feld der Aktion — Tür (cap 300), Archiv und
+     applog.py reichen sie unverändert bis in die Notizen-Spalte des Logs durch. */
+  var lgDrafts = {}, lgOpen = {}, lgSent = {};
+  var LOG_NOTE_VERBS = { gespraech:1, absage:1, zusage:1, zurueckgezogen:1 };
+  function lgNote(key){
+    var v = lgDrafts[key] !== undefined ? lgDrafts[key] : ((state.logmarks[key]||{}).note || "");
+    return String(v).trim().slice(0, 280);
+  }
   function toggleLogmark(key, status, firma, rolle){
     var cur = state.logmarks[key];
     var today = new Date().toISOString().slice(0,10);
@@ -1098,10 +1125,36 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       delete state.logmarks[key];
       doorShip([{ id: shipId, action: cur.status, date: today, undo: true }]);
     } else {
+      var note = lgNote(key);
       state.logmarks[key] = { status: status, firma: firma, rolle: r, date: today };
-      doorShip([{ id: shipId, action: status, date: today }]);
+      var act = { id: shipId, action: status, date: today };
+      if (note){ state.logmarks[key].note = note; act.note = note; }
+      doorShip([act]);
+      if (note){ delete lgDrafts[key]; lgSent[key] = "ok"; }
     }
     saveLogmarks(); renderAll();
+  }
+  /* Notiz-only-Versand: für Zeilen, deren gemeldeter oder gebuchter Status selbst ein
+     Log-Verb ist. Das Undo+Neu-Paar ist Ersetzen-Semantik — eine noch WARTENDE gleiche
+     Meldung (lokal oder an der Tür) würde die zweite sonst als Zwilling verschlucken;
+     eine schon GEBUCHTE stört nicht (Undo auf processed ist ein No-op) und applog
+     bucht das Verb auf gleicher Sektion in-place = Notiz wird angehängt. */
+  function sendLogNote(p){
+    var note = lgNote(p.key);
+    if (!note) return;
+    var today = new Date().toISOString().slice(0,10);
+    var r = logmarkRolle(p.rolle);
+    var shipId = (p.firma || p.key.split("\n")[0]) + (r ? "\n" + r : "");
+    var ok = doorShip([
+      { id: shipId, action: p.verb, date: today, undo: true },
+      { id: shipId, action: p.verb, date: today, note: note }
+    ]);
+    var mk = state.logmarks[p.key];
+    if (mk && mk.status === p.verb){ mk.note = note; mk.date = today; saveLogmarks(); }
+    if (ok){ delete lgDrafts[p.key]; lgSent[p.key] = "ok"; }
+    else { lgSent[p.key] = "fail"; }   // Artefakt ohne Tür: nie still verlieren
+    lgOpen[p.key] = 1;
+    renderAll();
   }
   function pruneLogmarks(){
     var A = applogData();
@@ -3283,14 +3336,15 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       mLabels.map(function(m){ return '<span class="glabel" style="left:'+pos(m.t).toFixed(2)+'%">'+m.l+"</span>"; }).join("")+
       '<span class="glabel today">heute</span>'+
       '</div><div class="aps-days"></div><span class="aps-chip"></span><div class="aps-btns"></div></div>';
-    rows.forEach(function(r){
+    rows.forEach(function(r, i){
       var e = r.e, done = !BTNS[e.status];
       var chip = CHIP[e.status] || ["", e.status];
       var chipTxt = chip[1], chipCls = chip[0];
       if (r.overdue){ chipCls = "warn"; chipTxt = "nachfassen"; }
       if (e.status==="gespraech" && e.termin)
         chipTxt = "Termin "+fmtISO(e.termin).replace(/\.\d{2}$/, ".");  // year dropped: fits the fixed chip
-      var mk = state.logmarks[logmarkKey(e)];
+      var rk = logmarkKey(e);
+      var mk = state.logmarks[rk];
       // Gemeldeter Status übernimmt den Chip: die dünne Knopf-Umrandung allein war als
       // Rückmeldung unsichtbar („passiert nichts", user 2026-08-13). Gebucht wird wie
       // immer erst beim nächsten Lauf — darum ehrlich „gemeldet", nie der nackte Status.
@@ -3319,10 +3373,15 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var btns = (BTNS[e.status]||[]).map(function(b){
         var on = mk && mk.status===b[0];
         return '<button class="aps-btn'+(on?" on":"")+'" data-logmark=\''+
-          esc(JSON.stringify({key:logmarkKey(e), status:b[0], firma:e.firma,
+          esc(JSON.stringify({key:rk, status:b[0], firma:e.firma,
                               rolle:logmarkRolle(e.rolle)}))+'\''+
           (on?' title="Nochmal tippen = zurücknehmen"':"")+">"+b[1]+"</button>";
       }).join("");
+      var noteDraft = lgDrafts[rk] !== undefined ? String(lgDrafts[rk]) : ((mk && mk.note) || "");
+      var noteOpen = (rk in lgOpen) ? lgOpen[rk] : !!(noteDraft || lgSent[rk]);
+      var pen = '<button class="aps-pen'+(noteOpen?" open":"")+'" data-lgnopen=\''+
+        esc(JSON.stringify({k:rk, o:noteOpen?1:0}))+'\''+
+        ' title="Notiz zu dieser Bewerbung — landet in der Notizen-Spalte des Bewerbungslogs">✎</button>';
       h += '<div class="aps-row'+(done?" done":"")+'">'+
         '<div class="m"><div class="t">'+esc(e.firma)+
           (e.initiativ ? ' <span class="inichip" title="Initiativbewerbung — ohne konkrete Stellenanzeige">Initiativ</span>' : "")+
@@ -3330,8 +3389,27 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
           (e.standort && e.standort!=="-" ? " · "+esc(e.standort) : "")+"</div></div>"+
         track+
         '<span class="aps-chip '+chipCls+'">'+chipTxt+"</span>"+
-        '<div class="aps-btns">'+btns+"</div>"+   // always present (empty spacer on done rows) -> columns align
+        '<div class="aps-btns">'+pen+btns+"</div>"+   // always present (empty spacer on done rows) -> columns align
       "</div>";
+      if (noteOpen){
+        // Verb für den Notiz-only-Versand: der gemeldete Status gewinnt (Undo+Neu ersetzt
+        // die wartende Meldung), sonst der gebuchte Zeilen-Status, sofern er ein Log-Verb
+        // ist. wartend/bereit ohne Meldung: kein Knopf — die Notiz reist mit dem nächsten
+        // Status-Tipp (Platzhalter sagt das).
+        var nverb = (mk && LOG_NOTE_VERBS[mk.status]) ? mk.status
+                  : (LOG_NOTE_VERBS[e.status] ? e.status : null);
+        h += '<div class="aps-noterow">'+
+          '<input class="aps-notein" id="lgn-'+i+'" type="text" maxlength="280" data-lgnote=\''+
+            esc(JSON.stringify(rk))+'\' value="'+esc(noteDraft)+'" placeholder="'+
+            (nverb ? "Notiz — „Notiz senden“ trägt sie beim nächsten Lauf ins Bewerbungslog nach"
+                   : "Notiz — geht automatisch mit dem nächsten Status-Tipp (Gespräch/Absage/Zusage) mit")+'">'+
+          (nverb ? '<button class="aps-nsend" data-lgnsend=\''+
+            esc(JSON.stringify({key:rk, firma:e.firma, rolle:logmarkRolle(e.rolle), verb:nverb}))+
+            '\'>Notiz senden</button>' : "")+
+          (lgSent[rk]==="ok" ? '<span class="aps-nok">✓ übermittelt — nächster Lauf bucht</span>'
+           : lgSent[rk]==="fail" ? '<span class="aps-nfail">⚠ nicht übermittelt (keine Tür konfiguriert)</span>' : "")+
+        "</div>";
+      }
     });
     h += "</div>";
     h += '<div class="aps-src" title="Quelle: Bewerbungslog (Drive, PII-freier Auszug). Umrandeter Knopf = gemeldet, wird beim nächsten Lauf gebucht.">Stand '+esc(fmtISO(A.generated)||A.generated||"")+"</div>";
@@ -4976,8 +5054,10 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     Object.keys(state.logmarks).forEach(function(k){
       var m = state.logmarks[k];
       var r = logmarkRolle(m.rolle);
-      out.push({ id: (m.firma || k.split("\n")[0]) + (r ? "\n" + r : ""),
-                 action: m.status, date: m.date });
+      var act = { id: (m.firma || k.split("\n")[0]) + (r ? "\n" + r : ""),
+                  action: m.status, date: m.date };
+      if (m.note) act.note = m.note;
+      out.push(act);
     });
     return out;
   }
@@ -5156,6 +5236,23 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     var lgm = e.target.closest("[data-logmark]");
     if (lgm){ try{ var lp = JSON.parse(lgm.getAttribute("data-logmark"));
       toggleLogmark(lp.key, lp.status, lp.firma, lp.rolle); }catch(err){} return; }
+    var lgo = e.target.closest("[data-lgnopen]");
+    if (lgo){
+      try{
+        var lop = JSON.parse(lgo.getAttribute("data-lgnopen"));
+        lgOpen[lop.k] = lop.o ? 0 : 1;
+        renderAll();
+        if (!lop.o){   // frisch geöffnet -> Cursor direkt ins Feld
+          var lgi = document.querySelectorAll(".aps-notein");
+          for (var lgx = 0; lgx < lgi.length; lgx++){
+            try{ if (JSON.parse(lgi[lgx].getAttribute("data-lgnote")) === lop.k){ lgi[lgx].focus(); break; } }catch(e2){}
+          }
+        }
+      }catch(err){}
+      return;
+    }
+    var lgs = e.target.closest("[data-lgnsend]");
+    if (lgs){ try{ sendLogNote(JSON.parse(lgs.getAttribute("data-lgnsend"))); }catch(err){} return; }
     var st = e.target.closest("[data-st]");
     if (st){ try{ stSend(JSON.parse(st.getAttribute("data-st"))); }catch(err){} return; }
     var so = e.target.closest("[data-stopt]");
@@ -5346,6 +5443,14 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
   });
 
   document.addEventListener("input", function(e){
+    // Notiz-Feld der Status-Seite: Entwurf live in die Map, KEIN Re-Render (der würde
+    // den Fokus werfen); eine Änderung macht eine alte Sende-Quittung ungültig.
+    var lgn = e.target && e.target.closest ? e.target.closest("[data-lgnote]") : null;
+    if (lgn){
+      try{ var lgk = JSON.parse(lgn.getAttribute("data-lgnote"));
+        lgDrafts[lgk] = lgn.value; delete lgSent[lgk]; }catch(err){}
+      return;
+    }
     // Such-Zeile (user GO 2026-08-02): innerhalb einer aktiven Suche NUR filtern (ein
     // Re-Render würde den Fokus aus dem Feld werfen). NUR am Übergang leer<->nicht-leer
     // wird einmal neu gerendert (Einklapp-Bereiche auf-/wieder zuklappen), mit
