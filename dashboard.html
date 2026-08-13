@@ -2175,6 +2175,16 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
         }
       }
     }
+    // Notiz-Zeilen hängen als GESCHWISTER unter ihrer .aps-row — den Sichtbarkeits-
+    // zustand der Zeile übernehmen, sonst bleibt die Notiz einer ausgefilterten
+    // Bewerbung sichtbar und klebt optisch unter der falschen Zeile (user-Screenshot
+    // 2026-08-13: Kivvo-Notiz stand scheinbar unter Wegscheider).
+    var nrs = host.querySelectorAll(".aps-noterow");
+    for (var nr = 0; nr < nrs.length; nr++){
+      var prevRow = nrs[nr].previousElementSibling;
+      nrs[nr].classList.toggle("shide",
+        !!(prevRow && prevRow.classList.contains("shide")));
+    }
     var cnt = line.querySelector(".scount"), clr = line.querySelector(".sclear");
     if (cnt) cnt.textContent = toks.length ? shown+" von "+total : "";
     if (clr) clr.style.display = toks.length ? "block" : "none";
