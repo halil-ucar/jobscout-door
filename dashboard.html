@@ -1047,6 +1047,12 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
 
   /* ---------------- state ---------------- */
   var MARKS_KEY = "jobscout-marks-v2";
+  /* MUSS vor dem state-Init stehen: `logmarks: loadLogmarks()` läuft sofort beim Laden.
+     Stand die Zuweisung erst weiter unten (var-Hoisting liefert undefined), las jeder
+     Seitenstart localStorage.getItem(undefined) => {} — alle gemeldeten Status waren nach
+     jedem Neuladen weg und der nächste Tipp überschrieb den gespeicherten Stand
+     (Fix 2026-08-13, „Gespräch/Absage/Zusage passiert nichts"). */
+  var LOGMARKS_KEY = "jobscout-logmarks-v1";
   var state = {
     items: [], meta: {}, runsMeta: {}, runOrder: [],
     view: "overview", source: null, loadedAt: null,
@@ -1071,20 +1077,29 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
      jobscout-letters-v1-Schlüssel im localStorage bleibt unangetastet, wirkt aber nicht mehr.) */
   /* Bewerbungslog-Statusmeldungen (Bewerbungsstatus-Buttons): lokal vorgemerkt, wandern
      über die Exportleiste als Log-Verben (gespraech/absage/zusage) an den Scout, der sie
-     via applog.py ins Drive-Bewerbungslog bucht. Keyed by the export's norm key. */
-  var LOGMARKS_KEY = "jobscout-logmarks-v1";
+     via applog.py ins Drive-Bewerbungslog bucht. Keyed PER ZEILE (Fix 2026-08-13): der
+     alte Firmen-Key ließ bei mehreren Bewerbungen derselben Firma (WASI ×3, Convidera ×2)
+     alle Zeilen eine Markierung teilen — ein Tipp auf Zeile 2 machte Zeile 1 rückgängig,
+     und die Buchung (id = Firma ohne Rolle) scheiterte in applog.py als „Mehrdeutig". */
   function loadLogmarks(){ try{ return JSON.parse(localStorage.getItem(LOGMARKS_KEY)||"{}")||{}; }catch(e){ return {}; } }
   function saveLogmarks(){ try{ localStorage.setItem(LOGMARKS_KEY, JSON.stringify(state.logmarks)); }catch(e){} }
   function applogData(){ return (typeof window!=="undefined" && window.__APPLOG__) || null; }
-  function toggleLogmark(key, status, firma){
+  /* Zeilen-Schlüssel + Versand-Id: "\n" als Trenner ist kollisionsfrei, weil Markdown-
+     Tabellenzellen (Quelle von Firma/Rolle) konstruktionsbedingt einzeilig sind; applog.py
+     partitioniert die id am ersten "\n" und bucht dann rollengenau (set_status rolle=). */
+  function logmarkRolle(r){ r = String(r==null?"":r).trim(); return (r && r !== "-") ? r : ""; }
+  function logmarkKey(e){ var r = logmarkRolle(e.rolle); return e.key + (r ? "\n" + r : ""); }
+  function toggleLogmark(key, status, firma, rolle){
     var cur = state.logmarks[key];
     var today = new Date().toISOString().slice(0,10);
+    var r = logmarkRolle(rolle);
+    var shipId = (firma || key.split("\n")[0]) + (r ? "\n" + r : "");
     if (cur && cur.status===status){
       delete state.logmarks[key];
-      doorShip([{ id: firma || key, action: cur.status, date: today, undo: true }]);
+      doorShip([{ id: shipId, action: cur.status, date: today, undo: true }]);
     } else {
-      state.logmarks[key] = { status: status, firma: firma, date: today };
-      doorShip([{ id: firma || key, action: status, date: today }]);
+      state.logmarks[key] = { status: status, firma: firma, rolle: r, date: today };
+      doorShip([{ id: shipId, action: status, date: today }]);
     }
     saveLogmarks(); renderAll();
   }
@@ -1093,8 +1108,9 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (!A || !A.entries) return;
     var removed = false;
     Object.keys(state.logmarks).forEach(function(k){
-      var e = A.entries.find(function(x){ return x.key===k; });
-      // drop marks the log has caught up with (or whose row vanished from the export)
+      var e = A.entries.find(function(x){ return logmarkKey(x)===k; });
+      // drop marks the log has caught up with (or whose row vanished from the export;
+      // covers old firm-only keys from before 2026-08-13 — clean one-time migration)
       if (!e || e.status===state.logmarks[k].status){ delete state.logmarks[k]; removed = true; }
     });
     if (removed) saveLogmarks();
@@ -3274,7 +3290,13 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (r.overdue){ chipCls = "warn"; chipTxt = "nachfassen"; }
       if (e.status==="gespraech" && e.termin)
         chipTxt = "Termin "+fmtISO(e.termin).replace(/\.\d{2}$/, ".");  // year dropped: fits the fixed chip
-      var mk = state.logmarks[e.key];
+      var mk = state.logmarks[logmarkKey(e)];
+      // Gemeldeter Status übernimmt den Chip: die dünne Knopf-Umrandung allein war als
+      // Rückmeldung unsichtbar („passiert nichts", user 2026-08-13). Gebucht wird wie
+      // immer erst beim nächsten Lauf — darum ehrlich „gemeldet", nie der nackte Status.
+      if (mk && CHIP[mk.status]){
+        chipCls = CHIP[mk.status][0]; chipTxt = CHIP[mk.status][1] + " gemeldet ✓";
+      }
       var ts = e.datum ? Date.parse(e.datum+"T00:00:00") : NaN;
       var inner = ticks;
       if (!isNaN(ts)){
@@ -3297,7 +3319,8 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       var btns = (BTNS[e.status]||[]).map(function(b){
         var on = mk && mk.status===b[0];
         return '<button class="aps-btn'+(on?" on":"")+'" data-logmark=\''+
-          esc(JSON.stringify({key:e.key, status:b[0], firma:e.firma}))+'\''+
+          esc(JSON.stringify({key:logmarkKey(e), status:b[0], firma:e.firma,
+                              rolle:logmarkRolle(e.rolle)}))+'\''+
           (on?' title="Nochmal tippen = zurücknehmen"':"")+">"+b[1]+"</button>";
       }).join("");
       h += '<div class="aps-row'+(done?" done":"")+'">'+
@@ -4948,10 +4971,13 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
       if (it.bucket!=="treffer" && it.bucket!=="unverif") return;
       out.push({ id: it.id, action: verb, date: m.date || new Date().toISOString().slice(0,10) });
     });
-    // Bewerbungslog status reports (id = Firma; log-only verbs, see apply_user_actions.py)
+    // Bewerbungslog status reports (id = "Firma\nRolle" seit 2026-08-13 — die Rolle macht
+    // Mehrfach-Bewerbungen bei einer Firma buchbar; log-only verbs, see apply_user_actions.py)
     Object.keys(state.logmarks).forEach(function(k){
       var m = state.logmarks[k];
-      out.push({ id: m.firma || k, action: m.status, date: m.date });
+      var r = logmarkRolle(m.rolle);
+      out.push({ id: (m.firma || k.split("\n")[0]) + (r ? "\n" + r : ""),
+                 action: m.status, date: m.date });
     });
     return out;
   }
@@ -5129,7 +5155,7 @@ window.__NEVERLIST__ = ["linkedin.com", "indeed.com", "stepstone.de", "xing.com"
     if (mk){ setMark(mk.getAttribute("data-id"), mk.getAttribute("data-mark")); return; }
     var lgm = e.target.closest("[data-logmark]");
     if (lgm){ try{ var lp = JSON.parse(lgm.getAttribute("data-logmark"));
-      toggleLogmark(lp.key, lp.status, lp.firma); }catch(err){} return; }
+      toggleLogmark(lp.key, lp.status, lp.firma, lp.rolle); }catch(err){} return; }
     var st = e.target.closest("[data-st]");
     if (st){ try{ stSend(JSON.parse(st.getAttribute("data-st"))); }catch(err){} return; }
     var so = e.target.closest("[data-stopt]");
